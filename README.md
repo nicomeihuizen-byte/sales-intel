@@ -1,4 +1,4 @@
-# Sales Intelligence — Stalled-Deal Detection
+# Sales Intelligence - Stalled-Deal Detection
 
 > 🚧 **Work in progress.** This README describes the project's target/finished state (per the build plan) while development is underway. See [Status](#status) for what's actually live right now.
 
