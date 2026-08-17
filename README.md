@@ -1,8 +1,8 @@
-# Sales Intelligence - Stalled-Deal Detection
+# Sales Intelligence: Stalled-Deal Detection
 
 > 🚧 **Work in progress.** This README describes the project's target/finished state (per the build plan) while development is underway. See [Status](#status) for what's actually live right now.
 
-A focused, single-feature sales intelligence tool. Reps and managers log deal notes over time, and the app flags deals that have gone quiet or lost momentum — with a plain-English explanation of *why* it thinks so, not just a summary of the notes.
+A focused, single-feature sales intelligence tool. Reps and managers log deal notes over time, and the app flags deals that have gone quiet or lost momentum. It gives a plain-English explanation of *why* it thinks so, not just a summary of the notes.
 
 It's not a CRM clone. It does one thing an off-the-shelf CRM doesn't: reason about momentum across a note history and surface the deals that need attention before they go cold.
 
@@ -28,7 +28,7 @@ It's not a CRM clone. It does one thing an off-the-shelf CRM doesn't: reason abo
 
 The easy version of this project is "paste your notes into a prompt and print whatever comes back." That's not what this does.
 
-The AI feature takes a deal's *entire* note history — each note with its timestamp — and is asked to reason about **momentum**, not to summarize content. It has to weigh things like: how long since the last touch, whether recent notes show forward motion (next steps, dates, commitments) or stalling language (vague follow-ups, no response, pushed timelines), and how that compares to the deal's earlier trajectory. The output is a structured status (`healthy` / `stalling` / `at risk`) plus a short, specific reasoning string explaining *why* — the part that's actually hard to get right, and the part that makes this a judgment tool rather than a text-in/text-out wrapper.
+The AI feature takes a deal's *entire* note history, with each note timestamped. It's asked to reason about **momentum**, not to summarize content. It has to weigh things like: how long since the last touch, whether recent notes show forward motion (next steps, dates, commitments) or stalling language (vague follow-ups, no response, pushed timelines), and how that compares to the deal's earlier trajectory. The output is a structured status (`healthy` / `stalling` / `at risk`) plus a short, specific reasoning string explaining *why*. That's the part that's actually hard to get right, and the part that makes this a judgment tool rather than a text-in/text-out wrapper.
 
 All of that reasoning happens server-side. The AI provider's API key never reaches the browser, so it can't be lifted from devtools or a network tab.
 
@@ -37,7 +37,7 @@ All of that reasoning happens server-side. The AI provider's API key never reach
 | Layer | Choice | Why |
 |---|---|---|
 | Framework | **Next.js** (App Router, TypeScript) | Frontend and backend API routes in one project, one deploy target. |
-| Database | **Supabase** (Postgres) | Managed Postgres with a generous free tier, and it includes auth — one less service to wire up. |
+| Database | **Supabase** (Postgres) | Managed Postgres with a generous free tier. Includes auth too, so that's one less service to wire up. |
 | Auth | **Supabase Auth** | Email/password + magic link out of the box, instead of hand-rolling session management. |
 | AI | **Anthropic API**, called server-side only | Keeps the API key off the client and gives control over cost and rate limits. |
 | Styling | **Tailwind CSS** | Fast to build with and easy to keep consistent without a component library. |
@@ -116,17 +116,17 @@ Actively being built, phase by phase:
 - [ ] Seed data + demo polish
 - [ ] Live demo link and screenshots above
 
-Check back here for updates, or watch the repo for commits — each one lands with a working, demoable state rather than partial work.
+Check back here for updates, or watch the repo for commits. Each commit lands with a working, demoable state rather than partial work.
 
 ## What I'd build next
 
 Beyond the MVP above, the natural next steps toward a real product:
 
-- **Multi-tenancy** — data isolation between different companies/orgs using the tool
-- **Billing** — Stripe integration for a paid tier
-- **Validated demand** — conversations with real sales reps/managers to pressure-test the wedge feature before investing further
-- **Distribution** — desktop packaging or App Store listing, once there's a reason to
+- **Multi-tenancy**: data isolation between different companies/orgs using the tool
+- **Billing**: Stripe integration for a paid tier
+- **Validated demand**: conversations with real sales reps/managers to pressure-test the wedge feature before investing further
+- **Distribution**: desktop packaging or App Store listing, once there's a reason to
 
 ## License
-
 MIT
+
