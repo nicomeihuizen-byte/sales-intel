@@ -50,19 +50,7 @@ All of that reasoning happens server-side. The AI provider's API key never reach
 3. A server route pulls the full, timestamped note history and sends it to the model with a prompt built around momentum, not summarization.
 4. The model returns a structured status (`healthy` / `stalling` / `at risk`) and a short reasoning string, rendered on the deal page.
 
-## Screenshots
 
-*\[Insert a screenshot or short GIF of the deal detail page and the insight panel in action here.\]*
-
-## Getting started
-
-```bash
-git clone https://github.com/[your-username]/sales-intel.git
-cd sales-intel
-npm install
-cp .env.local.example .env.local   # fill in the values below
-npm run dev
-```
 
 ### Environment variables
 
