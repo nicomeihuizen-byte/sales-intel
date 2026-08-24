@@ -102,7 +102,7 @@ Actively being built, phase by phase:
 - [x] Core CRUD for deals and notes
 - [x] AI insight feature (stalled-deal detection with reasoning)
 - [x] Seed data + demo polish
-- [ ] Live demo link and screenshots above
+- [x] Live demo link and screenshots above
 
 Check back here for updates, or watch the repo for commits. Each commit lands with a working, demoable state rather than partial work.
 
