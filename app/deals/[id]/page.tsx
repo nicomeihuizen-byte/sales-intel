@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase";
 import { getDealById } from "@/lib/deals";
 import { listNotesForDeal } from "@/lib/notes";
 import NoteForm from "@/components/NoteForm";
+import InsightPanel from "@/components/InsightPanel";
 
 interface DealDetailPageProps {
   params: Promise<{ id: string }>;
@@ -31,6 +32,8 @@ export default async function DealDetailPage({
 
       <h1 className="mt-4 text-2xl font-semibold">{deal.title}</h1>
       <p className="mt-1 text-zinc-500">{deal.company_name}</p>
+
+      <InsightPanel dealId={deal.id} />
 
       <NoteForm dealId={deal.id} />
 
