@@ -33,7 +33,7 @@ export default async function DealDetailPage({
       <h1 className="mt-4 text-2xl font-semibold">{deal.title}</h1>
       <p className="mt-1 text-zinc-500">{deal.company_name}</p>
 
-      <InsightPanel dealId={deal.id} />
+      <InsightPanel dealId={deal.id} dealStatus={deal.status} />
 
       <NoteForm dealId={deal.id} />
 

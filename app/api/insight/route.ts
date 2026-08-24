@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { getDealById } from "@/lib/deals";
 import { listNotesForDeal } from "@/lib/notes";
-import { analyzeDealMomentum } from "@/lib/ai";
+import { analyzeDealMomentum, reviewLostDeal, reviewWonDeal } from "@/lib/ai";
 
 interface AnalyzeDealBody {
   dealId: string;
@@ -19,9 +19,15 @@ function isAnalyzeDealBody(value: unknown): value is AnalyzeDealBody {
 // Stalled-deal AI insight. This is the only route that imports lib/ai.ts,
 // which is in turn the only module that reads ANTHROPIC_API_KEY - the key
 // never reaches a client component or the browser (see AGENTS.md - API &
-// Secrets Handling). Not persisted: each click re-runs the analysis against
-// the current note history, which is intentional for this phase - there is
-// no stored "last insight" column on deals yet.
+// Secrets Handling). Nothing is persisted: every click re-runs the
+// analysis against the current note history.
+//
+// The question asked depends on the deal's own status: an open deal gets
+// a momentum read (analyzeDealMomentum), a lost deal gets a loss
+// post-mortem instead (reviewLostDeal), and a won deal gets a win
+// analysis (reviewWonDeal) - asking "is this deal stalling" about a deal
+// that's already closed doesn't make sense either way, see
+// components/InsightPanel.tsx.
 export async function POST(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -58,8 +64,19 @@ export async function POST(request: Request) {
 
   try {
     const notes = await listNotesForDeal(supabase, deal.id);
+
+    if (deal.status === "lost") {
+      const review = await reviewLostDeal(deal.title, notes);
+      return NextResponse.json({ mode: "loss_review", review });
+    }
+
+    if (deal.status === "won") {
+      const review = await reviewWonDeal(deal.title, notes);
+      return NextResponse.json({ mode: "win_review", review });
+    }
+
     const insight = await analyzeDealMomentum(deal.title, notes);
-    return NextResponse.json({ insight });
+    return NextResponse.json({ mode: "momentum", insight });
   } catch (error) {
     return NextResponse.json(
       {
