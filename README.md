@@ -98,8 +98,8 @@ Actively being built, phase by phase:
 
 - [x] Project scaffold deployed to Vercel
 - [x] Database schema (`companies`, `deals`, `notes`)
-- [ ] Auth (sign up / log in / log out, protected routes)
-- [ ] Core CRUD for deals and notes
+- [x] Auth (sign up / log in / log out, protected routes)
+- [x] Core CRUD for deals and notes
 - [ ] AI insight feature (stalled-deal detection with reasoning)
 - [ ] Seed data + demo polish
 - [ ] Live demo link and screenshots above
