@@ -96,8 +96,8 @@ sales-intel/
 
 Actively being built, phase by phase:
 
-- [ ] Project scaffold deployed to Vercel
-- [ ] Database schema (`companies`, `deals`, `notes`)
+- [x] Project scaffold deployed to Vercel
+- [x] Database schema (`companies`, `deals`, `notes`)
 - [ ] Auth (sign up / log in / log out, protected routes)
 - [ ] Core CRUD for deals and notes
 - [ ] AI insight feature (stalled-deal detection with reasoning)
