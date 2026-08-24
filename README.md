@@ -6,7 +6,7 @@ A focused, single-feature sales intelligence tool. Reps and managers log deal no
 
 It's not a CRM clone. It does one thing an off-the-shelf CRM doesn't: reason about momentum across a note history and surface the deals that need attention before they go cold.
 
-[**Live demo →** \[live demo link\]](#) &nbsp;·&nbsp; Demo login: `[demo email]` / `[demo password]`
+[**Live demo →** https://sales-intel-rho.vercel.app/](https://sales-intel-rho.vercel.app/) &nbsp;·&nbsp; Demo login: `demo@meihuizen.ai` / `SI_Demo1234`
 
 ---
 
@@ -50,7 +50,19 @@ All of that reasoning happens server-side. The AI provider's API key never reach
 3. A server route pulls the full, timestamped note history and sends it to the model with a prompt built around momentum, not summarization.
 4. The model returns a structured status (`healthy` / `stalling` / `at risk`) and a short reasoning string, rendered on the deal page.
 
+For a deal that's already closed, the same button asks a different, status-appropriate question instead of a repeat momentum read.
 
+## Screenshots
+
+**Loss review**: for a deal marked lost, the AI runs a post-mortem instead of a momentum read. It either confirms the loss was final, or names the specific unaddressed objection worth revisiting.
+
+![Loss review on a lost deal, showing a "worth revisiting" verdict with reasoning](docs/screenshots/loss-review.png)
+
+**Win analysis**: for a deal marked won, it surfaces what specifically made the deal move fast and what's repeatable in a future deal, instead of a plain "won" badge.
+
+![Win analysis on a won deal, showing a "fast & clean" verdict with reasoning](docs/screenshots/win-review.png)
+
+## Getting started
 
 ### Environment variables
 
