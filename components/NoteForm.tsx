@@ -28,19 +28,19 @@ export default function NoteForm({ dealId }: NoteFormProps) {
       action={formAction}
       className="mt-6 flex flex-col gap-3"
     >
-      <label className="flex flex-col gap-1 text-sm text-zinc-700">
+      <label className="flex flex-col gap-1 text-sm text-muted">
         Add a note
         <textarea
           name="content"
           required
           rows={3}
           placeholder="What happened on this deal?"
-          className="rounded border border-zinc-300 px-3 py-2 text-base"
+          className="rounded border border-line bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent"
         />
       </label>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-red-400">
           {state.error}
         </p>
       )}
@@ -48,7 +48,7 @@ export default function NoteForm({ dealId }: NoteFormProps) {
       <button
         type="submit"
         disabled={isPending}
-        className="self-start rounded bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+        className="self-start rounded bg-accent px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {isPending ? "Saving..." : "Add note"}
       </button>

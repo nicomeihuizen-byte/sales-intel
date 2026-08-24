@@ -16,10 +16,15 @@ interface InsightPanelProps {
   dealStatus: DealStatus;
 }
 
+// Dark-theme badge colors. Each of the three result types keeps its own
+// distinct hue family so a glance at the badge alone tells you which kind
+// of read this is, not just what the verdict was - translucent fills and
+// bright text read cleanly against the app's dark background, unlike the
+// light-mode pastel fills these started as.
 const MOMENTUM_STYLES: Record<DealMomentum, string> = {
-  healthy: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  stalling: "bg-amber-50 text-amber-700 border-amber-200",
-  at_risk: "bg-red-50 text-red-700 border-red-200",
+  healthy: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  stalling: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  at_risk: "bg-red-500/10 text-red-400 border-red-500/30",
 };
 
 const MOMENTUM_LABEL: Record<DealMomentum, string> = {
@@ -29,8 +34,8 @@ const MOMENTUM_LABEL: Record<DealMomentum, string> = {
 };
 
 const LOSS_REVIEW_STYLES: Record<LossReviewVerdict, string> = {
-  confirmed_lost: "bg-zinc-100 text-zinc-600 border-zinc-300",
-  worth_revisiting: "bg-blue-50 text-blue-700 border-blue-200",
+  confirmed_lost: "bg-white/5 text-muted border-line",
+  worth_revisiting: "bg-accent2/10 text-accent2 border-accent2/30",
 };
 
 const LOSS_REVIEW_LABEL: Record<LossReviewVerdict, string> = {
@@ -39,9 +44,10 @@ const LOSS_REVIEW_LABEL: Record<LossReviewVerdict, string> = {
 };
 
 const WIN_REVIEW_STYLES: Record<WinPattern, string> = {
-  fast_and_clean: "bg-violet-50 text-violet-700 border-violet-200",
-  steady_and_thorough: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  recovered_momentum: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+  fast_and_clean: "bg-violet-500/10 text-violet-400 border-violet-500/30",
+  steady_and_thorough: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
+  recovered_momentum:
+    "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/30",
 };
 
 const WIN_REVIEW_LABEL: Record<WinPattern, string> = {
@@ -169,21 +175,21 @@ export default function InsightPanel({
   const config = PANEL_CONFIG[dealStatus];
 
   return (
-    <div className="mt-6 rounded border border-zinc-200 p-4">
+    <div className="mt-6 rounded border border-line bg-background/40 p-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-zinc-700">{config.title}</h2>
+        <h2 className="font-mono text-sm text-accent2">{`// ${config.title}`}</h2>
         <button
           type="button"
           onClick={handleAnalyze}
           disabled={isLoading}
-          className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {isLoading ? "Analyzing..." : config.buttonLabel}
         </button>
       </div>
 
       {error && (
-        <p role="alert" className="mt-3 text-sm text-red-600">
+        <p role="alert" className="mt-3 text-sm text-red-400">
           {error}
         </p>
       )}
@@ -195,7 +201,7 @@ export default function InsightPanel({
           >
             {MOMENTUM_LABEL[result.insight.status]}
           </span>
-          <p className="mt-2 text-sm text-zinc-700">
+          <p className="mt-2 text-sm text-foreground">
             {result.insight.reasoning}
           </p>
         </div>
@@ -208,7 +214,7 @@ export default function InsightPanel({
           >
             {LOSS_REVIEW_LABEL[result.review.verdict]}
           </span>
-          <p className="mt-2 text-sm text-zinc-700">
+          <p className="mt-2 text-sm text-foreground">
             {result.review.reasoning}
           </p>
         </div>
@@ -221,14 +227,14 @@ export default function InsightPanel({
           >
             {WIN_REVIEW_LABEL[result.review.pattern]}
           </span>
-          <p className="mt-2 text-sm text-zinc-700">
+          <p className="mt-2 text-sm text-foreground">
             {result.review.reasoning}
           </p>
         </div>
       )}
 
       {!result && !error && !isLoading && (
-        <p className="mt-3 text-sm text-zinc-500">{config.placeholder}</p>
+        <p className="mt-3 text-sm text-muted">{config.placeholder}</p>
       )}
     </div>
   );

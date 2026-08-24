@@ -1,26 +1,50 @@
 @import "tailwindcss";
 
+/*
+ * Terminal-inspired dark theme shared with the portfolio site
+ * (meihuizen.ai/projects/project-four.html) - dark graphite surfaces,
+ * a single terminal-green accent, monospace interface text. Keeping the
+ * app in the same visual system as the case-study page it's linked from,
+ * so a visitor clicking "Live demo" doesn't hit a jarring style change.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #10121a;
+  --raised: #171a24;
+  --foreground: #ecedf3;
+  --line: #262a38;
+  --muted: #8b90a3;
+  --dim: #565b6e;
+  --accent: #5fbf8e;
+  --accent-dim: #2e6b52;
+  --accent2: #5fa8d3;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-raised: var(--raised);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-dim: var(--dim);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent2: var(--accent2);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-display: var(--font-space-grotesk);
 }
 
 body {
+  min-height: 100vh;
   background: var(--background);
+  background-image:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(232, 179, 74, 0.07), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 10%, rgba(95, 168, 211, 0.06), transparent 60%);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--background);
 }

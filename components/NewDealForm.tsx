@@ -25,34 +25,34 @@ export default function NewDealForm() {
     <form
       ref={formRef}
       action={formAction}
-      className="mt-6 flex flex-col gap-3 rounded border border-zinc-200 p-4"
+      className="mt-6 flex flex-col gap-3 rounded border border-line bg-background/40 p-4"
     >
-      <h2 className="text-sm font-medium text-zinc-700">Add a deal</h2>
+      <h2 className="font-mono text-sm text-accent2">{"// add a deal"}</h2>
 
-      <label className="flex flex-col gap-1 text-sm text-zinc-700">
+      <label className="flex flex-col gap-1 text-sm text-muted">
         Company
         <input
           type="text"
           name="companyName"
           required
           placeholder="Acme Corp"
-          className="rounded border border-zinc-300 px-3 py-2 text-base"
+          className="rounded border border-line bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent"
         />
       </label>
 
-      <label className="flex flex-col gap-1 text-sm text-zinc-700">
+      <label className="flex flex-col gap-1 text-sm text-muted">
         Deal title
         <input
           type="text"
           name="title"
           required
           placeholder="Q3 renewal"
-          className="rounded border border-zinc-300 px-3 py-2 text-base"
+          className="rounded border border-line bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent"
         />
       </label>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-red-400">
           {state.error}
         </p>
       )}
@@ -60,7 +60,7 @@ export default function NewDealForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="self-start rounded bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+        className="self-start rounded bg-accent px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {isPending ? "Adding..." : "Add deal"}
       </button>

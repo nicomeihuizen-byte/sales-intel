@@ -3,6 +3,7 @@ import { listDealsForUser } from "@/lib/deals";
 import { signOut } from "@/app/login/actions";
 import DealCard from "@/components/DealCard";
 import NewDealForm from "@/components/NewDealForm";
+import TerminalShell from "@/components/TerminalShell";
 
 export default async function DealsPage() {
   const supabase = await createServerSupabaseClient();
@@ -13,22 +14,27 @@ export default async function DealsPage() {
   const deals = await listDealsForUser(supabase);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-16">
+    <TerminalShell label="~/deals">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Deals</h1>
+        <h1 className="font-display text-2xl font-semibold text-accent">
+          Deals
+        </h1>
         <form action={signOut}>
-          <button type="submit" className="text-sm text-zinc-500 underline">
+          <button
+            type="submit"
+            className="font-mono text-sm text-muted hover:text-accent"
+          >
             Log out
           </button>
         </form>
       </div>
-      <p className="mt-2 text-zinc-500">Signed in as {user?.email}.</p>
+      <p className="mt-2 text-muted">Signed in as {user?.email}.</p>
 
       <NewDealForm />
 
       <ul className="mt-8 flex flex-col gap-3">
         {deals.length === 0 && (
-          <li className="text-sm text-zinc-500">
+          <li className="text-sm text-muted">
             No deals yet. Add your first one above.
           </li>
         )}
@@ -38,6 +44,6 @@ export default async function DealsPage() {
           </li>
         ))}
       </ul>
-    </div>
+    </TerminalShell>
   );
 }

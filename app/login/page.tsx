@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { signIn, signUp, type AuthActionState } from "./actions";
+import TerminalShell from "@/components/TerminalShell";
 
 const initialActionState: AuthActionState = { error: null, message: null };
 
@@ -22,29 +23,29 @@ export default function LoginPage() {
   const isPending = isSignIn ? signInPending : signUpPending;
 
   return (
-    <div className="mx-auto max-w-sm px-6 py-16">
-      <h1 className="text-2xl font-semibold">
+    <TerminalShell label="~/login" maxWidthClassName="max-w-sm">
+      <h1 className="font-display text-2xl font-semibold text-accent">
         {isSignIn ? "Log in" : "Sign up"}
       </h1>
-      <p className="mt-2 text-zinc-500">
+      <p className="mt-2 text-muted">
         {isSignIn
           ? "Log in to see your deals."
           : "Create an account to start tracking deals."}
       </p>
 
       <form action={formAction} className="mt-6 flex flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm text-zinc-700">
+        <label className="flex flex-col gap-1 text-sm text-muted">
           Email
           <input
             type="email"
             name="email"
             required
             autoComplete="email"
-            className="rounded border border-zinc-300 px-3 py-2 text-base"
+            className="rounded border border-line bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent"
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-sm text-zinc-700">
+        <label className="flex flex-col gap-1 text-sm text-muted">
           Password
           <input
             type="password"
@@ -52,17 +53,17 @@ export default function LoginPage() {
             required
             minLength={6}
             autoComplete={isSignIn ? "current-password" : "new-password"}
-            className="rounded border border-zinc-300 px-3 py-2 text-base"
+            className="rounded border border-line bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent"
           />
         </label>
 
         {actionState.error && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-red-400">
             {actionState.error}
           </p>
         )}
         {actionState.message && (
-          <p role="status" className="text-sm text-emerald-600">
+          <p role="status" className="text-sm text-accent">
             {actionState.message}
           </p>
         )}
@@ -70,7 +71,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={isPending}
-          className="rounded bg-zinc-900 px-4 py-2 text-white disabled:opacity-50"
+          className="rounded bg-accent px-4 py-2 font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {isPending ? "Please wait..." : isSignIn ? "Log in" : "Sign up"}
         </button>
@@ -79,10 +80,10 @@ export default function LoginPage() {
       <button
         type="button"
         onClick={() => setMode(isSignIn ? "sign-up" : "sign-in")}
-        className="mt-4 text-sm text-zinc-500 underline"
+        className="mt-4 font-mono text-sm text-muted underline decoration-line underline-offset-4 hover:text-accent"
       >
         {isSignIn ? "Need an account? Sign up" : "Already have an account? Log in"}
       </button>
-    </div>
+    </TerminalShell>
   );
 }
