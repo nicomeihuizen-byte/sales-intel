@@ -1,5 +1,6 @@
 import { createBrowserClient, createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { NextRequest, NextResponse } from "next/server";
 
 // This is the single place the Supabase client is constructed (see
 // AGENTS.md). Every other module imports one of the two functions below
@@ -45,10 +46,42 @@ export async function createServerSupabaseClient() {
             });
           } catch {
             // setAll is called from a Server Component in some code paths,
-            // where cookies() is read-only. Safe to ignore as long as
-            // middleware is refreshing the session (added in the auth
-            // phase) - see the @supabase/ssr docs on this exact pattern.
+            // where cookies() is read-only. Safe to ignore because
+            // createMiddlewareSupabaseClient below refreshes the session on
+            // every request - see the @supabase/ssr docs on this pattern.
           }
+        },
+      },
+    },
+  );
+}
+
+/**
+ * Client for middleware.ts. Middleware runs before next/headers' cookies()
+ * is available, so this reads and writes cookies directly on the
+ * request/response pair instead. Used to refresh the session on every
+ * request and to redirect unauthenticated visitors away from protected
+ * routes (see middleware.ts).
+ */
+export function createMiddlewareSupabaseClient(
+  request: NextRequest,
+  response: NextResponse,
+) {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
         },
       },
     },
