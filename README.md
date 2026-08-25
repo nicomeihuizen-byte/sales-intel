@@ -1,6 +1,6 @@
-# Sales Intelligence: Stalled-Deal Detection
+# AI-powered sales intelligence tool
 
-> 🚧 **Work in progress.** This README describes the project's target/finished state (per the build plan) while development is underway. See [Status](#status) for what's actually live right now.
+This README describes the project's target/finished state (per the build plan) while development is underway. See [Status](#status) for what's actually live right now.
 
 A focused, single-feature sales intelligence tool. Reps and managers log deal notes over time, and the app flags deals that have gone quiet or lost momentum. It gives a plain-English explanation of *why* it thinks so, not just a summary of the notes.
 
