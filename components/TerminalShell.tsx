@@ -24,7 +24,7 @@ export default function TerminalShell({
       <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
         <div className={`mx-auto flex ${maxWidthClassName} items-center justify-between px-6 py-4`}>
           <a
-            href="https://www.meihuizen.ai/projects/project-four.html"
+            href="https://www.meihuizen.ai/projects/ai-sales-deal-intelligence.html"
             className="font-mono text-sm text-muted transition-colors hover:text-accent"
           >
             &lt; back to case study
