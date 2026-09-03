@@ -1,7 +1,7 @@
-# Patch: advice bullets on all three analysis modes
+# Patch v2: advice bullets, plus the IronGate fix
 
-Drop these four files over the matching paths in `D:\sales-intel-deploy`, overwriting.
-`insight-next-steps.diff` is the same change as a unified diff if you'd rather read it that way first.
+**This replaces the first patch entirely.** Same four files, so if you already applied v1,
+just copy these over the top. If you haven't applied v1 at all, skip it and use this one.
 
 ```
 lib/types.ts
@@ -10,66 +10,81 @@ components/InsightPanel.tsx
 README.md
 ```
 
-No new dependencies, no env vars, no database change. `npm run seed` is not needed:
-nothing about the seeded data changed, only what the model is asked to return about it.
+Still no new dependencies, no env vars, no database change, no re-seed.
 
-## What changed
+## What went wrong on IronGate
 
-**`lib/types.ts`** - each of the three result types gained an action list:
+The error you saw was as uninformative as it was possible to be. It said the shape didn't
+match, twice, and named nothing else. That's the first thing this patch fixes, and the
+reason it took a rewrite of the validation rather than a one-line tweak.
 
-| Type | New field | What it holds |
-| --- | --- | --- |
-| `DealInsight` (open) | `nextSteps` | Concrete moves for this deal, priority order |
-| `DealLossReview` (lost) | `recommendedActions` | A re-approach plan, or lessons for the next similar deal |
-| `DealWinReview` (won) | `repeatablePlays` | Plays to deliberately run again |
+Three separate faults, all mine:
 
-Three names rather than one shared `recommendations`, because the three lists answer
-genuinely different questions and a shared name would hide that at every call site.
+**1. The prompt contradicted itself, and IronGate is the deal that exposes it.**
+The momentum prompt defines `at_risk` as "long silence, explicit pushback, or no plausible
+next step remains". Then, a paragraph later, it demands two to four next steps. IronGate is
+the single most at-risk deal in the seed set: champion resigned, five reconnect attempts
+unanswered. The model reads "no plausible next step remains", agrees, and returns an empty
+`nextSteps` array. Validation rejects it. That's not a model failure, it's the prompt
+asking for two incompatible things and the model picking the one stated as a definition.
 
-**`lib/ai.ts`**
+Fixed by rewording `at_risk` to "no plausible next step left **in the current approach**",
+and by stating explicitly that the list is never empty: a dead deal's actions are the clean
+close-out, the last named attempt, recording why. The uncomfortable recommendation is still
+a recommendation.
 
-- `isActionList()` validates all three: an array of 1 to 5 strings, each non-blank after
-  trimming. The prompts ask for 2 to 4. The validator's floor is looser on purpose: a deal
-  where only one action genuinely matters is a correct answer, and rejecting it would burn
-  both retries and hand the user an error instead of a good result.
-- `buildActionListInstruction()` builds the shared prompt block so the specificity and
-  length rules are written once, with a per-mode brief passed in.
-- Each prompt now bans the generic bullet by example ("follow up with the customer",
-  "keep the relationship warm") rather than just asking for specificity.
-- `PROSE_STYLE_RULES` closes the em dash gap in the model's own output, which was open
-  item 4 in the project notes. It was one line to add while the prompts were already open.
-- `max_tokens` 512 to 1024. A truncated `tool_use` block fails validation and burns a
-  retry, so the ceiling now sits well above a long reasoning plus five bullets.
+**2. The retry was useless against exactly this kind of failure.**
+`MAX_ATTEMPTS = 2` sent the identical prompt twice. That only ever helps when the failure is
+random. A model that reads an instruction a certain way reads it the same way twice, so a
+deterministic failure was guaranteed to burn both attempts and produce "attempt 2 of 2".
+Now the second attempt replays the model's own tool call and answers it with an `is_error`
+tool result naming what was rejected. It gets told what was wrong instead of being asked
+the same question again.
 
-**`components/InsightPanel.tsx`**
+**3. Rejecting was the wrong response to most malformed output.**
+The old validator failed the entire analysis if the list had six items instead of five, or
+one stray blank string among four good ones. Both are formatting slips, not wrong answers,
+and both cost you a result you'd have been happy with. `normalizeActionList` now trims,
+drops blanks and caps at five. Only a genuinely empty result fails, because only then is
+there nothing to show.
 
-- New `ActionList` sub-component: an `h3` heading plus a `ul` with a mono `>` marker in
-  the accent green, `list-none` so the browser doesn't draw a second bullet beside it.
-  Real `h3`, not a styled div, per the heading hierarchy rules in AGENTS.md.
-- Headings differ per mode: **Next steps** (open), **Worth repeating** (won), and for a
-  lost deal the heading follows the verdict: **How to revisit** on `worth_revisiting`,
-  **What to do differently** on `confirmed_lost`. Those are two different lists and one
-  neutral label over both would blur them.
-- The three placeholder strings now mention the advice, since the panel promises it before
-  you click.
+## What you'll see instead now
 
-**`README.md`** - the "output" description said status plus reasoning string in two
-places. That's now understated, so both were updated along with the roadmap line.
+Errors name their cause. Three distinguishable failures, none of which include note content
+or prompt text, so they're safe to surface in the panel:
 
-## Verified before sending
+```
+The AI's report_deal_momentum response was unusable after 2 attempts:
+  "nextSteps" was an empty array, expected an array of at least one non-empty string.
 
-- `npx tsc --noEmit`: clean for these files. (`app/layout.tsx` reports `Cannot find name
-  'LayoutProps'`, a Next.js generated type that only exists after a build. Pre-existing,
-  not from this patch.)
-- `npx eslint .`: clean.
-- `npm run build`: compiled successfully, all 10 routes generated. The sandbox still can't
-  reach `fonts.googleapis.com`, so the build was run with the three `next/font/google`
-  calls stubbed out and `app/layout.tsx` restored untouched afterwards. Your local build
-  hits the real fonts.
-- Not verified: the actual quality of the generated bullets, which needs a live API key.
-  That's the thing to eyeball after you push. Solara Energy (lost, worth revisiting) and
-  IronGate Financial Holdings (open, at risk, champion resigned) are the two clearest
-  tests, since both have an obvious right answer.
+  ... the response was cut off at the 1536 token limit, leaving an incomplete tool call.
+
+  ... no report_deal_momentum tool call came back (stop_reason: end_turn).
+```
+
+If you see the middle one, `MAX_RESPONSE_TOKENS` is too low. That was the other candidate
+for IronGate's failure and I couldn't rule it out from the old error message, which is
+precisely the problem. It's now raised from 1024 to 1536 as cheap insurance, and it reports
+itself distinctly if it ever bites.
+
+## Verified
+
+- `npx tsc --noEmit` clean, `npx eslint .` clean, `npm run build` compiled and generated all
+  10 routes (font stub workaround again, `app/layout.tsx` restored untouched afterwards).
+- I ran the new validator directly against the payloads I suspected. Results:
+
+| Input | Result |
+| --- | --- |
+| `nextSteps: []` (the IronGate suspect) | rejected, and now says so by name |
+| six items | accepted, trimmed to five |
+| one blank among good ones | accepted, blank dropped |
+| all blank / not an array / missing | rejected, each named |
+| `status: "dead"` | rejected, lists the valid statuses |
+| one good item | accepted |
+
+- Not verified: whether the prompt fix actually stops the model returning an empty list on
+  IronGate. That needs a live key. If it still fails, the error will now tell you which of
+  the three faults you're looking at, which is the point.
 
 ## Suggested commit
 
@@ -80,7 +95,14 @@ Momentum, loss review and win review each return a 2-4 item action
 list alongside the reasoning: next steps on an open deal, a re-approach
 plan or lessons on a lost one, repeatable plays on a won one.
 
-Validated as 1-5 non-blank strings and rendered as an h3 plus bulleted
-list in InsightPanel. Also adds an em dash ban to the prompts and
-raises max_tokens to 1024 so the longer tool output can't truncate.
+Validation now repairs what it can (trims to five items, drops blank
+entries) and rejects only an unusable payload, naming the offending
+field in the error rather than reporting a generic shape mismatch. The
+retry replays the rejection to the model instead of resending the same
+prompt, which could never fix a deterministic failure.
+
+Also rewords the at_risk definition, which said no plausible next step
+remains and so contradicted the request for next steps on exactly the
+deals that need them most, adds an em dash ban to the prompts, and
+raises max_tokens to 1536.
 ```
