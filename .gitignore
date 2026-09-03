@@ -47,3 +47,11 @@ next-env.d.ts
 # supabase cli local state
 /supabase/.temp
 /supabase/.branches
+
+# Patch notes and diffs that arrive alongside a change. The reasoning
+# belongs in the commit message and the change belongs in the commit;
+# neither belongs in the working tree afterwards.
+/APPLY.md
+/*.diff
+/RUN-THIS-ON-HOSTED.sql
+/Claude outputs/
