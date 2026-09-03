@@ -18,6 +18,14 @@ export interface Deal {
   title: string;
   status: DealStatus;
   created_at: string;
+  // Euros. Null means nobody has put a number on this deal yet, which is
+  // different from zero: an unpriced deal is left out of the pipeline
+  // totals rather than dragging them down.
+  value_eur: number | null;
+  // Set when the deal moves to won or lost, cleared if it reopens. Null on
+  // every deal that closed before this column existed, which is why the
+  // conversion-time metric counts only the deals it can actually date.
+  closed_at: string | null;
 }
 
 export interface Note {
@@ -40,8 +48,11 @@ export interface Contact {
   user_id: string;
   name: string;
   role: string | null;
-  email: string | null;
-  phone: string | null;
+  // Lists rather than single values: people have a work address and a
+  // personal one, a mobile and a desk line. Always an array, never null,
+  // so callers never have to check both "missing" and "empty".
+  emails: string[];
+  phones: string[];
   linkedin_url: string | null;
   created_at: string;
   updated_at: string;
@@ -101,4 +112,36 @@ export interface DealWinReview {
   // the pilot ends"), not as observations about what happened, so the
   // list is usable on a different deal than the one it came from.
   repeatablePlays: string[];
+}
+
+// The stored result of the last momentum analysis for a deal, read by the
+// pipeline health meter. A cache of the model's current opinion, not a
+// history: one row per deal, replaced on each run.
+export interface DealInsightRecord {
+  id: string;
+  deal_id: string;
+  user_id: string;
+  momentum: DealMomentum;
+  reasoning: string;
+  analyzed_at: string;
+}
+
+// What the metrics panel renders. Every field is derived, nothing here is
+// stored: see lib/metrics.ts.
+export interface PipelineMetrics {
+  // 0 to 100, or null when no open deal has been analysed yet. Null and
+  // zero mean very different things here, so the meter shows "not
+  // analysed" rather than an empty bar.
+  healthScore: number | null;
+  analyzedDeals: number;
+  openDeals: number;
+  openValueEur: number;
+  wonValueEur: number;
+  // Average months from a deal being created to being marked won. Null
+  // until at least one deal has both dates.
+  averageMonthsToWin: number | null;
+  wonDealsWithDates: number;
+  // The oldest analysis feeding healthScore, so the panel can say how
+  // stale the number is instead of implying it is live.
+  oldestAnalysisAt: string | null;
 }

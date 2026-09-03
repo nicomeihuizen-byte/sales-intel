@@ -26,5 +26,5 @@ export async function GET() {
     redirect("/login");
   }
 
-  redirect("/deals");
+  redirect("/companies");
 }

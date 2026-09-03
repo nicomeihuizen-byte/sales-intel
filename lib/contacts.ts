@@ -7,7 +7,7 @@ import type { Contact } from "./types";
 // (supabase/migrations) is what scopes it to the caller.
 
 const CONTACT_COLUMNS =
-  "id, company_id, user_id, name, role, email, phone, linkedin_url, created_at, updated_at";
+  "id, company_id, user_id, name, role, emails, phones, linkedin_url, created_at, updated_at";
 
 /**
  * Every contact at one company, oldest first so the order stays stable as
@@ -33,8 +33,8 @@ export async function listContactsForCompany(
 export interface ContactInput {
   name: string;
   role?: string;
-  email?: string;
-  phone?: string;
+  emails?: string[];
+  phones?: string[];
   linkedinUrl?: string;
 }
 
@@ -49,6 +49,19 @@ function normalizeContactInput(input: ContactInput) {
     return trimmed ? trimmed : null;
   };
 
+  // Trims every entry, drops the blanks, and removes duplicates. The form
+  // renders a spare empty row for adding another address, so a submit
+  // almost always arrives with at least one empty string in the list; that
+  // is expected input, not an error.
+  const cleanList = (values: string[] | undefined) =>
+    Array.from(
+      new Set(
+        (values ?? [])
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0),
+      ),
+    );
+
   const name = input.name.trim();
 
   if (!name) {
@@ -58,8 +71,8 @@ function normalizeContactInput(input: ContactInput) {
   return {
     name,
     role: blankToNull(input.role),
-    email: blankToNull(input.email),
-    phone: blankToNull(input.phone),
+    emails: cleanList(input.emails),
+    phones: cleanList(input.phones),
     linkedin_url: blankToNull(input.linkedinUrl),
   };
 }
@@ -90,9 +103,8 @@ export async function createContact(
 }
 
 /**
- * Replaces every editable field on a contact, so clearing the phone box in
- * the form actually clears the phone number instead of leaving the old one
- * behind. `updated_at` is set here rather than by a database trigger,
+ * Replaces every editable field on a contact, so clearing a phone box in
+ * the form actually removes that number instead of leaving it behind. `updated_at` is set here rather than by a database trigger,
  * keeping the schema plain at the cost of remembering it in this one place.
  */
 export async function updateContact(

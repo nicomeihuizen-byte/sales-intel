@@ -3,7 +3,21 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { createCompany, deleteCompany } from "@/lib/companies";
-import { createDealForCompany, deleteDeal } from "@/lib/deals";
+import { listNotesForDeal } from "@/lib/notes";
+import {
+  analyzeDealMomentum,
+  draftContactEmail,
+  type ContactEmailDraft,
+} from "@/lib/ai";
+import { recordDealInsight } from "@/lib/insights";
+import {
+  createDealForCompany,
+  deleteDeal,
+  getDealById,
+  listDealsForUser,
+  parseEuroInput,
+  updateDealValue,
+} from "@/lib/deals";
 import { destructiveActionsEnabled } from "@/lib/featureFlags";
 import {
   createContact,
@@ -34,11 +48,17 @@ function contactInputFromForm(formData: FormData): ContactInput | null {
     return typeof value === "string" ? value : undefined;
   };
 
+  // getAll, because the form renders one input per address plus a spare
+  // empty one. lib/contacts.ts trims, drops the blanks and de-duplicates,
+  // so a submit carrying empty rows is normal input rather than an error.
+  const list = (field: string) =>
+    formData.getAll(field).filter((value): value is string => typeof value === "string");
+
   return {
     name,
     role: optional("role"),
-    email: optional("email"),
-    phone: optional("phone"),
+    emails: list("emails"),
+    phones: list("phones"),
     linkedinUrl: optional("linkedinUrl"),
   };
 }
@@ -313,4 +333,245 @@ export async function deleteCompanyAction(
   revalidatePath("/companies");
   revalidatePath("/deals");
   return { error: null };
+}
+
+export async function updateDealValueAction(
+  dealId: string,
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const raw = formData.get("valueEur");
+
+  if (typeof raw !== "string") {
+    return { error: "Enter a number, or leave it empty." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    await updateDealValue(supabase, dealId, parseEuroInput(raw));
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to save value.",
+    };
+  }
+
+  revalidatePath("/companies");
+  revalidatePath("/deals");
+  return { error: null };
+}
+
+// A refresh runs one AI call per open deal, so the ceiling stops a large
+// pipeline (or a public demo) from turning one click into forty requests.
+// Deals are analysed newest first, so the cap drops the stalest rather
+// than an arbitrary slice.
+const MAX_DEALS_PER_REFRESH = 12;
+
+export interface RefreshState {
+  error: string | null;
+  analyzed: number;
+  failed: number;
+}
+
+/**
+ * Re-analyses every open deal and stores the results, which is what moves
+ * the pipeline health meter.
+ *
+ * One deal failing does not fail the run. A single unanalysable deal
+ * (a malformed AI response, a rate limit) should cost you that deal's
+ * contribution to the score, not the other eleven, so failures are counted
+ * and reported rather than thrown.
+ */
+export async function refreshPipelineAction(
+  previousState: RefreshState,
+): Promise<RefreshState> {
+  const { userId, error: authError } = await requireUserId();
+
+  // Failures keep the previous run's count, so an error doesn't also wipe
+  // "8 deals re-analysed" off the panel and leave you wondering whether
+  // the earlier run happened at all.
+  if (!userId) {
+    return { ...previousState, error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  let openDeals;
+
+  try {
+    const deals = await listDealsForUser(supabase);
+    openDeals = deals
+      .filter((deal) => deal.status === "open")
+      .slice(0, MAX_DEALS_PER_REFRESH);
+  } catch (error) {
+    return {
+      ...previousState,
+      error: error instanceof Error ? error.message : "Failed to load deals.",
+    };
+  }
+
+  let analyzed = 0;
+  let failed = 0;
+
+  for (const deal of openDeals) {
+    try {
+      const notes = await listNotesForDeal(supabase, deal.id);
+      const insight = await analyzeDealMomentum(deal.title, notes);
+      await recordDealInsight(
+        supabase,
+        userId,
+        deal.id,
+        insight.status,
+        insight.reasoning,
+      );
+      analyzed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  revalidatePath("/companies");
+
+  return {
+    error:
+      failed > 0
+        ? `${failed} deal${failed === 1 ? "" : "s"} could not be analysed. Open one and press Analyze to see why.`
+        : null,
+    analyzed,
+    failed,
+  };
+}
+
+export interface EmailDraftState {
+  error: string | null;
+  draft: ContactEmailDraft | null;
+}
+
+/**
+ * Turns a name and a note history into a follow-up email to copy.
+ *
+ * `dealId` is whatever the page has selected. When nothing is selected the
+ * company's most recent deal is used instead, since a contact with no deal
+ * in view still has one deal that matters most, and asking the user to
+ * pick first would put a step in front of a one-click feature.
+ *
+ * The sender's name is derived from the signed-in email address rather
+ * than stored anywhere. It is a signature on a draft nobody sends
+ * automatically, so a rough guess is better than another settings field.
+ */
+export async function draftEmailAction(
+  contactId: string,
+  dealId: string | null,
+  previousState: EmailDraftState,
+): Promise<EmailDraftState> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // A failed re-draft keeps the draft already on screen. Pressing "write
+  // another" and getting an error should not also take away the perfectly
+  // good text you were about to copy.
+  if (!user) {
+    return { ...previousState, error: "You must be signed in to do that." };
+  }
+
+  try {
+    const { data: contactRow, error: contactError } = await supabase
+      .from("contacts")
+      .select("id, name, role, company_id, companies(name)")
+      .eq("id", contactId)
+      .maybeSingle();
+
+    if (contactError) {
+      throw new Error(contactError.message);
+    }
+
+    if (!contactRow) {
+      throw new Error("That contact no longer exists.");
+    }
+
+    const contact = contactRow as {
+      id: string;
+      name: string;
+      role: string | null;
+      company_id: string;
+      companies: { name: string } | { name: string }[] | null;
+    };
+
+    const companyName = Array.isArray(contact.companies)
+      ? (contact.companies[0]?.name ?? "their company")
+      : (contact.companies?.name ?? "their company");
+
+    let deal = dealId ? await getDealById(supabase, dealId) : null;
+
+    if (!deal || deal.company_id !== contact.company_id) {
+      const { data: fallbackRows, error: fallbackError } = await supabase
+        .from("deals")
+        .select("id")
+        .eq("company_id", contact.company_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (fallbackError) {
+        throw new Error(fallbackError.message);
+      }
+
+      const fallbackId = (fallbackRows ?? [])[0]?.id as string | undefined;
+      deal = fallbackId ? await getDealById(supabase, fallbackId) : null;
+    }
+
+    if (!deal) {
+      throw new Error(
+        "There is no deal for this company yet, so there is nothing to write about.",
+      );
+    }
+
+    const notes = await listNotesForDeal(supabase, deal.id);
+
+    const draft = await draftContactEmail(
+      {
+        contactName: contact.name,
+        contactRole: contact.role,
+        companyName,
+        dealTitle: deal.title,
+        dealStatus: deal.status,
+        senderName: senderNameFromEmail(user.email),
+      },
+      notes,
+    );
+
+    return { error: null, draft };
+  } catch (error) {
+    return {
+      draft: previousState.draft,
+      error:
+        error instanceof Error ? error.message : "Failed to draft an email.",
+    };
+  }
+}
+
+/**
+ * "nico@meihuizen.ai" becomes "Nico"; "jan.de.vries@x.com" becomes "Jan De
+ * Vries". Falls back to "me" when there is no address at all, which only
+ * happens in states the auth layer should already have caught.
+ */
+function senderNameFromEmail(email: string | undefined): string {
+  const local = email?.split("@")[0];
+
+  if (!local) {
+    return "me";
+  }
+
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

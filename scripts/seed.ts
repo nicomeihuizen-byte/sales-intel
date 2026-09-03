@@ -33,11 +33,24 @@ interface SeedDeal {
   title: string;
   status: DealStatus;
   notes: SeedNote[];
+  /** Euros. Omitted on one open deal on purpose, see SEED_DATA. */
+  valueEur?: number;
+  /** Days ago the deal was marked won or lost. Only for closed deals. */
+  closedDaysAgo?: number;
+}
+
+interface SeedContact {
+  name: string;
+  role: string;
+  emails: string[];
+  phones?: string[];
+  linkedinUrl?: string;
 }
 
 interface SeedCompany {
   name: string;
   deals: SeedDeal[];
+  contacts?: SeedContact[];
 }
 
 // Shorthand for the two long enterprise timelines below - a plain object
@@ -71,10 +84,25 @@ function notesFromTimeline(entries: Array<[number, string]>): SeedNote[] {
 const SEED_DATA: SeedCompany[] = [
   {
     name: "Acme Robotics",
+    contacts: [
+      {
+        name: "Priya Shah",
+        role: "Operations Director",
+        emails: ["p.shah@acmerobotics.example", "priya.shah@acme-group.example"],
+        phones: ["+31 20 555 0142"],
+        linkedinUrl: "linkedin.com/in/example-priya-shah",
+      },
+      {
+        name: "Tom Reyes",
+        role: "VP Engineering",
+        emails: ["t.reyes@acmerobotics.example"],
+      },
+    ],
     deals: [
       {
         title: "Q3 Expansion",
         status: "open",
+        valueEur: 48000,
         notes: [
           {
             daysAgo: 14,
@@ -102,10 +130,19 @@ const SEED_DATA: SeedCompany[] = [
   },
   {
     name: "Northwind Traders",
+    contacts: [
+      {
+        name: "Marcus Webb",
+        role: "Head of Logistics",
+        emails: ["m.webb@northwind.example"],
+        phones: ["+44 20 7946 0812"],
+      },
+    ],
     deals: [
       {
         title: "Warehouse Automation Pilot",
         status: "open",
+        valueEur: 26500,
         notes: [
           {
             daysAgo: 40,
@@ -132,10 +169,18 @@ const SEED_DATA: SeedCompany[] = [
   },
   {
     name: "Bluepeak Logistics",
+    contacts: [
+      {
+        name: "Sofia Lindqvist",
+        role: "CFO",
+        emails: ["s.lindqvist@bluepeak.example"],
+      },
+    ],
     deals: [
       {
         title: "Enterprise Rollout",
         status: "open",
+        valueEur: 74000,
         notes: [
           {
             daysAgo: 65,
@@ -158,10 +203,20 @@ const SEED_DATA: SeedCompany[] = [
   },
   {
     name: "Fenwick & Cole",
+    contacts: [
+      {
+        name: "Daniel Okonkwo",
+        role: "Managing Partner",
+        emails: ["d.okonkwo@fenwickcole.example"],
+        phones: ["+44 161 496 0233"],
+      },
+    ],
     deals: [
       {
         title: "Renewal FY26",
         status: "won",
+        valueEur: 31500,
+        closedDaysAgo: 21,
         notes: [
           {
             daysAgo: 20,
@@ -180,10 +235,19 @@ const SEED_DATA: SeedCompany[] = [
   },
   {
     name: "Solara Energy",
+    contacts: [
+      {
+        name: "Elena Vasquez",
+        role: "Head of Procurement",
+        emails: ["e.vasquez@solara.example"],
+      },
+    ],
     deals: [
       {
         title: "Pilot Program",
         status: "lost",
+        valueEur: 19000,
+        closedDaysAgo: 45,
         notes: [
           {
             daysAgo: 45,
@@ -206,10 +270,25 @@ const SEED_DATA: SeedCompany[] = [
   },
   {
     name: "Meridian Global Systems",
+    contacts: [
+      {
+        name: "Anneke Blom",
+        role: "Director of Data Platforms",
+        emails: ["a.blom@meridian-global.example"],
+        phones: ["+31 30 555 0199", "+31 6 1234 5678"],
+        linkedinUrl: "linkedin.com/in/example-anneke-blom",
+      },
+      {
+        name: "Rahul Menon",
+        role: "Enterprise Architect",
+        emails: ["r.menon@meridian-global.example"],
+      },
+    ],
     deals: [
       {
         title: "Enterprise Data Platform Rollout",
         status: "open",
+        valueEur: 410000,
         notes: notesFromTimeline([
           // Phase 1: discovery, weekly cadence.
           [480, "Inbound from Elena Kowalski (VP Data Strategy) after our webinar. Meridian is consolidating five legacy data warehouses and wants a modern platform. Scheduled a discovery call."],
@@ -275,6 +354,19 @@ const SEED_DATA: SeedCompany[] = [
   },
   {
     name: "IronGate Financial Holdings",
+    contacts: [
+      {
+        name: "Charles Whitfield",
+        role: "CIO (departed)",
+        emails: ["c.whitfield@irongate.example"],
+      },
+      {
+        name: "Dana Kowalski",
+        role: "Interim Head of Technology",
+        emails: ["d.kowalski@irongate.example"],
+        phones: ["+1 212 555 0177"],
+      },
+    ],
     deals: [
       {
         title: "Core Banking Platform Migration",
@@ -507,6 +599,32 @@ async function main(): Promise<void> {
       );
     }
 
+    if (company.contacts?.length) {
+      const contactRows = company.contacts.map((contact) => ({
+        user_id: userId,
+        company_id: (companyRow as { id: string }).id,
+        name: contact.name,
+        role: contact.role,
+        emails: contact.emails,
+        phones: contact.phones ?? [],
+        linkedin_url: contact.linkedinUrl ?? null,
+      }));
+
+      const { error: contactsError } = await supabase
+        .from("contacts")
+        .insert(contactRows);
+
+      if (contactsError) {
+        throw new Error(
+          `Failed to create contacts for "${company.name}": ${contactsError.message}`,
+        );
+      }
+
+      console.log(
+        `Seeded ${contactRows.length} contact(s) for "${company.name}".`,
+      );
+    }
+
     for (const deal of company.deals) {
       const { data: dealRow, error: dealError } = await supabase
         .from("deals")
@@ -515,6 +633,11 @@ async function main(): Promise<void> {
           company_id: (companyRow as { id: string }).id,
           title: deal.title,
           status: deal.status,
+          value_eur: deal.valueEur ?? null,
+          closed_at:
+            deal.closedDaysAgo === undefined
+              ? null
+              : daysAgoIso(deal.closedDaysAgo, now),
         })
         .select("id")
         .single();

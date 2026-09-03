@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase";
 import { getDealById } from "@/lib/deals";
 import { listNotesForDeal } from "@/lib/notes";
 import { analyzeDealMomentum, reviewLostDeal, reviewWonDeal } from "@/lib/ai";
+import { forgetDealInsight, recordDealInsight } from "@/lib/insights";
 
 interface AnalyzeDealBody {
   dealId: string;
@@ -65,17 +66,37 @@ export async function POST(request: Request) {
   try {
     const notes = await listNotesForDeal(supabase, deal.id);
 
+    // A closed deal drops whatever momentum reading it had. Leaving a
+    // stale "healthy" behind would keep it feeding the pipeline health
+    // meter, which only counts open deals but would have no way to know
+    // the stored row no longer describes anything live.
     if (deal.status === "lost") {
       const review = await reviewLostDeal(deal.title, notes);
+      await forgetDealInsight(supabase, deal.id).catch(() => {});
       return NextResponse.json({ mode: "loss_review", review });
     }
 
     if (deal.status === "won") {
       const review = await reviewWonDeal(deal.title, notes);
+      await forgetDealInsight(supabase, deal.id).catch(() => {});
       return NextResponse.json({ mode: "win_review", review });
     }
 
     const insight = await analyzeDealMomentum(deal.title, notes);
+
+    // Storing the result is what keeps the health meter current without
+    // any extra AI calls: looking at a deal updates the dashboard. A
+    // failure here is swallowed on purpose - the user asked for an
+    // analysis and got one, and losing the cached copy is not worth
+    // turning that into an error.
+    await recordDealInsight(
+      supabase,
+      user.id,
+      deal.id,
+      insight.status,
+      insight.reasoning,
+    ).catch(() => {});
+
     return NextResponse.json({ mode: "momentum", insight });
   } catch (error) {
     return NextResponse.json(

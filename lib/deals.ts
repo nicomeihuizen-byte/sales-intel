@@ -10,6 +10,14 @@ export interface DealWithCompany extends Deal {
   company_name: string;
 }
 
+// One place for the deal column list, so a new column reaches every query
+// at once. Two of these (value_eur, closed_at) feed the metrics panel, and
+// a query that quietly omitted them would show the panel a zero rather
+// than an error.
+const DEAL_COLUMNS =
+  "id, company_id, user_id, title, status, created_at, value_eur, closed_at";
+const DEAL_COLUMNS_WITH_COMPANY = `${DEAL_COLUMNS}, companies(name)`;
+
 interface DealRow {
   id: string;
   company_id: string;
@@ -17,6 +25,8 @@ interface DealRow {
   title: string;
   status: DealStatus;
   created_at: string;
+  value_eur: number | null;
+  closed_at: string | null;
   companies: { name: string } | { name: string }[] | null;
 }
 
@@ -38,6 +48,8 @@ function toDealWithCompany(row: DealRow): DealWithCompany {
     title: row.title,
     status: row.status,
     created_at: row.created_at,
+    value_eur: row.value_eur,
+    closed_at: row.closed_at,
     company_name: companyNameFromRow(row),
   };
 }
@@ -54,9 +66,7 @@ export async function listDealsForUser(
 ): Promise<DealWithCompany[]> {
   const { data, error } = await supabase
     .from("deals")
-    .select(
-      "id, company_id, user_id, title, status, created_at, companies(name)",
-    )
+    .select(DEAL_COLUMNS_WITH_COMPANY)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -78,9 +88,7 @@ export async function getDealById(
 ): Promise<DealWithCompany | null> {
   const { data, error } = await supabase
     .from("deals")
-    .select(
-      "id, company_id, user_id, title, status, created_at, companies(name)",
-    )
+    .select(DEAL_COLUMNS_WITH_COMPANY)
     .eq("id", dealId)
     .maybeSingle();
 
@@ -166,7 +174,7 @@ export async function createDeal(
   const { data, error } = await supabase
     .from("deals")
     .insert({ user_id: userId, company_id: companyId, title, status: "open" })
-    .select("id, company_id, user_id, title, status, created_at")
+    .select(DEAL_COLUMNS)
     .single();
 
   if (error || !data) {
@@ -211,11 +219,19 @@ export async function updateDealStatus(
     throw new Error(`"${status}" is not a deal status.`);
   }
 
+  // closed_at is stamped here rather than by a trigger, so the one place
+  // that changes status is also the one place that dates it. Moving a deal
+  // back to open clears it: a deal that reopened was never closed on that
+  // date, and leaving the stamp behind would feed a wrong number into the
+  // conversion-time metric.
   const { data, error } = await supabase
     .from("deals")
-    .update({ status })
+    .update({
+      status,
+      closed_at: status === "open" ? null : new Date().toISOString(),
+    })
     .eq("id", dealId)
-    .select("id, company_id, user_id, title, status, created_at")
+    .select(DEAL_COLUMNS)
     .maybeSingle();
 
   if (error) {
@@ -259,7 +275,7 @@ export async function createDealForCompany(
       title: trimmed,
       status: "open",
     })
-    .select("id, company_id, user_id, title, status, created_at")
+    .select(DEAL_COLUMNS)
     .single();
 
   if (error || !data) {
@@ -290,3 +306,100 @@ export async function deleteDeal(
     throw new Error(`Failed to delete deal: ${error.message}`);
   }
 }
+
+/**
+ * Sets or clears a deal's euro value. `null` clears it, which is not the
+ * same as zero: an unpriced deal is left out of the pipeline totals, a
+ * zero-value deal would be counted as worth nothing.
+ *
+ * Rejects anything that isn't a finite, non-negative number. The database
+ * column is numeric(14,2), so a value past that would come back as an
+ * opaque Postgres overflow rather than something a user can act on.
+ */
+export async function updateDealValue(
+  supabase: SupabaseClient,
+  dealId: string,
+  valueEur: number | null,
+): Promise<Deal> {
+  if (valueEur !== null) {
+    if (!Number.isFinite(valueEur) || valueEur < 0) {
+      throw new Error("A deal value has to be a positive number, or empty.");
+    }
+
+    if (valueEur > 99_999_999_999) {
+      throw new Error("That value is larger than this field can hold.");
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("deals")
+    .update({ value_eur: valueEur })
+    .eq("id", dealId)
+    .select(DEAL_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to update deal value: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("That deal no longer exists.");
+  }
+
+  return data as Deal;
+}
+
+/**
+ * Parses what someone typed into the value box.
+ *
+ * Accepts the ways a European actually writes money: "12500", "12.500",
+ * "12 500", "12.500,50", "€12,500.00". Returns null for an empty box
+ * (meaning "no value"), and throws for anything it can't read rather than
+ * guessing, because guessing wrong here quietly changes a pipeline total.
+ *
+ * The decimal separator is decided by whichever of "." and "," appears
+ * last, since that is the one in the decimal position. "12.500" with no
+ * later comma is read as twelve thousand five hundred, matching how it
+ * would be written on a Dutch invoice.
+ */
+export function parseEuroInput(raw: string): number | null {
+  const trimmed = raw.trim().replace(/^€\s*/, "").trim();
+
+  if (trimmed === "") {
+    return null;
+  }
+
+  if (!/^[\d.,\s]+$/.test(trimmed)) {
+    throw new Error("Enter a number, for example 12500 or 12.500,50");
+  }
+
+  const compact = trimmed.replace(/\s/g, "");
+  const lastSeparator = Math.max(
+    compact.lastIndexOf(","),
+    compact.lastIndexOf("."),
+  );
+
+  // The decision is made by what follows the LAST separator, not by which
+  // character it is. One or two digits after it means it is a decimal
+  // point ("12.500,50", "1,234.56", "12,50"). Anything else means every
+  // separator in the string is a thousands separator, which is what makes
+  // "12.500" twelve and a half thousand and "1.234.567" over a million
+  // rather than errors.
+  const digitsAfter =
+    lastSeparator === -1 ? 0 : compact.length - lastSeparator - 1;
+  const hasDecimals =
+    lastSeparator !== -1 && digitsAfter >= 1 && digitsAfter <= 2;
+
+  const normalized = hasDecimals
+    ? `${compact.slice(0, lastSeparator).replace(/[.,]/g, "")}.${compact.slice(lastSeparator + 1)}`
+    : compact.replace(/[.,]/g, "");
+
+  const value = Number(normalized);
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("Enter a number, for example 12500 or 12.500,50");
+  }
+
+  return Math.round(value * 100) / 100;
+}
+

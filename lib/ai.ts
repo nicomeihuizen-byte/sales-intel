@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type {
   DealInsight,
+  DealStatus,
   DealLossReview,
   DealMomentum,
   DealWinReview,
@@ -679,5 +680,126 @@ export async function reviewWonDeal(
       required: ["pattern", "reasoning", "repeatablePlays"],
     },
     validate: validateDealWinReview,
+  });
+}
+
+const EMAIL_DRAFT_TOOL_NAME = "report_email_draft";
+
+/**
+ * A drafted follow-up email. Subject and body are separate so the UI can
+ * offer them as two copyable fields, since most mail clients want them
+ * pasted into different boxes.
+ */
+export interface ContactEmailDraft {
+  subject: string;
+  body: string;
+}
+
+function isContactEmailDraft(value: unknown): value is ContactEmailDraft {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as { subject?: unknown; body?: unknown };
+
+  return (
+    typeof candidate.subject === "string" &&
+    candidate.subject.trim().length > 0 &&
+    typeof candidate.body === "string" &&
+    candidate.body.trim().length > 0
+  );
+}
+
+export interface EmailDraftContext {
+  contactName: string;
+  contactRole: string | null;
+  companyName: string;
+  dealTitle: string;
+  dealStatus: DealStatus;
+  senderName: string;
+}
+
+function buildEmailDraftPrompt(
+  context: EmailDraftContext,
+  notes: NoteForAnalysis[],
+  now: Date,
+): string {
+  const today = now.toISOString().slice(0, 10);
+  const lastNote = notes.at(-1);
+  const silenceLine = lastNote
+    ? `The last thing logged on this deal was ${daysBetween(lastNote.created_at, now)} day(s) ago.`
+    : "Nothing has been logged on this deal yet.";
+
+  const statusBrief: Record<DealStatus, string> = {
+    open: "The deal is still live. The email should move it one concrete step forward: propose the specific next action the notes point to, not a general check-in.",
+    won: "The deal is won. The email should handle what comes after signature: onboarding, the next milestone, or a thank you that names something specific they did.",
+    lost: "The deal was lost. The email should keep the door open honestly, referring to the actual reason it went the way it did, without relitigating it or sounding wounded.",
+  };
+
+  return `Write a short follow-up email from ${context.senderName} to ${context.contactName}${context.contactRole ? `, ${context.contactRole}` : ""} at ${context.companyName}, about the deal "${context.dealTitle}". Today's date is ${today}. ${silenceLine}
+
+${statusBrief[context.dealStatus]}
+
+Note history, oldest first:
+${formatNoteHistory(notes)}
+
+Ground the email in that history. Refer to something specific that actually happened: a document, a date, a question they asked, a commitment either side made. A reader should be able to tell it was written about this deal and no other.
+
+Write it in English, whatever language the notes are in. Keep it to about 120 words, three short paragraphs at most, with a clear ask at the end. No subject-line clichés, no "I hope this email finds you well", no summarising the whole history back at them. Write the way a experienced salesperson writes to someone they already know: direct, warm, and short.
+
+Sign off as ${context.senderName}. Do not invent facts that are not in the notes: no prices, no dates, no names, no commitments that were never made. If the history is too thin to say anything specific, write a genuinely short note asking the one question that would unblock things.
+
+${PROSE_STYLE_RULES}
+
+Call ${EMAIL_DRAFT_TOOL_NAME} with the subject line and the body.`;
+}
+
+/**
+ * Drafts a follow-up email to one contact, grounded in the deal's note
+ * history and shaped by its status.
+ *
+ * Always English by explicit instruction, even when the notes are Dutch or
+ * German, because that is what was asked for and a model reading Dutch
+ * notes will otherwise answer in Dutch.
+ *
+ * The output is a draft to copy, never something sent: nothing in this
+ * app talks to a mail server, and the UI hands the text over rather than
+ * doing anything with it.
+ */
+export async function draftContactEmail(
+  context: EmailDraftContext,
+  notes: NoteForAnalysis[],
+  now: Date = new Date(),
+): Promise<ContactEmailDraft> {
+  const client = new Anthropic({ apiKey: requireApiKey() });
+  const prompt = buildEmailDraftPrompt(context, notes, now);
+
+  return requestStructuredToolCall(client, prompt, {
+    toolName: EMAIL_DRAFT_TOOL_NAME,
+    toolDescription:
+      "Report a drafted follow-up email to a contact about a specific deal.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        subject: {
+          type: "string",
+          description:
+            "A specific subject line referring to this deal, under about 60 characters.",
+        },
+        body: {
+          type: "string",
+          description:
+            "The email body in English, about 120 words, ending in a clear ask, signed off by the sender.",
+        },
+      },
+      required: ["subject", "body"],
+    },
+    validate: (value) =>
+      isContactEmailDraft(value)
+        ? { valid: true, value }
+        : {
+            valid: false,
+            problem: `"subject" and "body" must both be non-empty strings`,
+          },
   });
 }
