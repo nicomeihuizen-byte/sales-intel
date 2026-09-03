@@ -31,3 +31,21 @@ export function destructiveActionsEnabled(): boolean {
   // wondering why the buttons never appeared.
   return process.env.ALLOW_DESTRUCTIVE_ACTIONS?.trim().toLowerCase() === "true";
 }
+
+/**
+ * Whether to show the "back to case study" link in the header.
+ *
+ * That link exists for the public demo: someone arrives from the portfolio
+ * page, tries the app, and needs a way back. On the local copy it is a
+ * link out of the tool you are working in, to a page about the tool you
+ * are working in.
+ *
+ * Default is ON, the opposite of destructiveActionsEnabled, and for the
+ * same reason: the deployment that must keep working should need no
+ * configuration. Hosted is untouched; local sets
+ * SHOW_CASE_STUDY_LINK=false and forgetting to do so costs a stray link,
+ * not a broken demo.
+ */
+export function caseStudyLinkEnabled(): boolean {
+  return process.env.SHOW_CASE_STUDY_LINK?.trim().toLowerCase() !== "false";
+}

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { caseStudyLinkEnabled } from "@/lib/featureFlags";
 
 interface TerminalShellProps {
   children: ReactNode;
@@ -21,16 +22,18 @@ export default function TerminalShell({
 }: TerminalShellProps) {
   return (
     <div className="min-h-full">
-      <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
-        <div className={`mx-auto flex ${maxWidthClassName} items-center justify-between px-6 py-4`}>
-          <a
-            href="https://www.meihuizen.ai/projects/ai-sales-deal-intelligence.html"
-            className="font-mono text-sm text-muted transition-colors hover:text-accent"
-          >
-            &lt; back to case study
-          </a>
-        </div>
-      </header>
+      {caseStudyLinkEnabled() && (
+        <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
+          <div className={`mx-auto flex ${maxWidthClassName} items-center justify-between px-6 py-4`}>
+            <a
+              href="https://www.meihuizen.ai/projects/ai-sales-deal-intelligence.html"
+              className="font-mono text-sm text-muted transition-colors hover:text-accent"
+            >
+              &lt; back to case study
+            </a>
+          </div>
+        </header>
+      )}
       <main className={`mx-auto ${maxWidthClassName} px-6 py-12`}>
         <div className="overflow-hidden rounded-lg border border-line bg-raised shadow-[0_30px_60px_-30px_rgba(0,0,0,0.6)]">
           <div className="flex items-center gap-2 border-b border-line px-4 py-3">

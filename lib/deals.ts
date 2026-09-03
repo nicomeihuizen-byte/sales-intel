@@ -14,7 +14,14 @@ export interface DealWithCompany extends Deal {
 // at once. Two of these (value_eur, closed_at) feed the metrics panel, and
 // a query that quietly omitted them would show the panel a zero rather
 // than an error.
-const DEAL_COLUMNS =
+/**
+ * Every column a Deal needs to be complete. Exported because
+ * lib/companies.ts selects deals too, and when this list gained value_eur
+ * that other query kept its own hardcoded string, so deals loaded through
+ * the companies pane arrived with value_eur undefined and rendered as
+ * "\u20ac NaN". One definition, imported, is the fix.
+ */
+export const DEAL_COLUMNS =
   "id, company_id, user_id, title, status, created_at, value_eur, closed_at";
 const DEAL_COLUMNS_WITH_COMPANY = `${DEAL_COLUMNS}, companies(name)`;
 

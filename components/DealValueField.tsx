@@ -15,8 +15,11 @@ const initialState: FormState = { error: null };
  * permanent input box. Most of the time this is something to read, and a
  * row of live text fields makes a deal list look like a spreadsheet.
  *
- * An unpriced deal shows a dash rather than "€0". Nothing has been decided
- * about its value, and zero is a decision.
+ * An unpriced deal shows "+ value", not "€ —". The dash was honest about
+ * the data and useless as an interface: it reads as a blank, so nothing
+ * suggests it can be clicked, and the way to price a deal was invisible.
+ * Zero is still never shown for an unpriced deal, because zero is a
+ * decision and no decision has been made.
  */
 export default function DealValueField({
   dealId,
@@ -25,6 +28,12 @@ export default function DealValueField({
   dealId: string;
   valueEur: number | null;
 }) {
+  // A value that isn't a finite number is treated as unpriced. The bug
+  // that made this necessary was a query missing the column, so the field
+  // arrived undefined and NaN reached the formatter. Fixed at the source
+  // in lib/companies.ts, but a missing column should show a dash, not
+  // "\u20ac NaN", if it ever happens again.
+  const value = Number.isFinite(valueEur as number) ? valueEur : null;
   const [isEditing, setIsEditing] = useState(false);
   const [state, formAction, isPending] = useActionState(
     updateDealValueAction.bind(null, dealId),
@@ -40,12 +49,12 @@ export default function DealValueField({
       <button
         type="button"
         onClick={() => setIsEditing(true)}
-        title="Set the deal value"
-        className={`shrink-0 font-mono text-xs transition-colors hover:text-accent ${
-          valueEur === null ? "text-dim" : "text-muted"
+        title={value === null ? "Add a deal value" : "Change the deal value"}
+        className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-xs transition-colors hover:bg-white/5 hover:text-accent ${
+          value === null ? "text-dim" : "text-muted"
         }`}
       >
-        {valueEur === null ? "€ —" : formatEuro(valueEur)}
+        {value === null ? "+ value" : formatEuro(value)}
       </button>
     );
   }
@@ -60,7 +69,7 @@ export default function DealValueField({
         name="valueEur"
         inputMode="decimal"
         autoFocus
-        defaultValue={valueEur === null ? "" : String(valueEur)}
+        defaultValue={value === null ? "" : String(value)}
         placeholder="12.500"
         className="w-24 rounded border border-line bg-background px-2 py-1 font-mono text-xs text-foreground outline-none focus:border-accent"
       />

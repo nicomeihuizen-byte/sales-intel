@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { DEAL_COLUMNS } from "./deals";
 import type { Company, Deal } from "./types";
 
 // Data-access layer for companies. Until the two-pane view existed,
@@ -138,7 +139,7 @@ export async function listDealsForCompany(
 ): Promise<Deal[]> {
   const { data, error } = await supabase
     .from("deals")
-    .select("id, company_id, user_id, title, status, created_at")
+    .select(DEAL_COLUMNS)
     .eq("company_id", companyId)
     .order("created_at", { ascending: false });
 

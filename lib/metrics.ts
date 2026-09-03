@@ -144,6 +144,7 @@ export async function computePipelineMetrics(
     analyzedDeals: analyzed,
     openDeals: openDeals.length,
     openValueEur: sumValues(openDeals),
+    wonDeals: wonDeals.length,
     wonValueEur: sumValues(wonDeals),
     averageMonthsToWin: average,
     wonDealsWithDates: counted,

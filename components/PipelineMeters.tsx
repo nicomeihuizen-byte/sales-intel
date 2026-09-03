@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import {
   refreshPipelineAction,
   type RefreshState,
@@ -138,39 +138,45 @@ function StatTile({
 }
 
 /**
- * The fixed metrics panel: one meter and three figures, bottom right.
+ * The pipeline strip: one meter and three figures, across the top of the
+ * page above the panes.
  *
- * Collapsible, because a fixed panel is in the way the moment you stop
- * looking at it, and this one sits over the notes timeline.
+ * It was a fixed panel bottom right, which put it over the notes timeline
+ * and made it something to dismiss. In the flow at the top it is the first
+ * thing read and nothing has to move out of its way, so the collapse
+ * control is gone with it. What survives is `refresh`, which is the only
+ * control here that does anything: it re-runs the analysis the health
+ * score averages.
+ *
+ * Four cells on a wide screen, stacking to two and then one as the width
+ * drops, so the figures stay readable rather than shrinking.
  */
 export default function PipelineMeters({
   metrics,
 }: {
   metrics: PipelineMetrics;
 }) {
-  const [isOpen, setIsOpen] = useState(true);
   const [state, refreshAction, isRefreshing] = useActionState(
     refreshPipelineAction,
     initialRefreshState,
   );
 
-  if (!isOpen) {
-    return (
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 z-20 rounded-lg border border-line bg-raised/90 px-3 py-2 font-mono text-xs text-muted shadow-lg backdrop-blur transition-colors hover:text-accent"
-      >
-        {"// pipeline"}
-      </button>
-    );
-  }
-
   return (
-    <aside className="fixed bottom-4 right-4 z-20 w-[19rem] rounded-lg border border-line bg-raised/90 p-4 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.8)] backdrop-blur">
+    <section className="mt-6 rounded-lg border border-line bg-raised/60 p-4">
       <div className="flex items-center justify-between">
         <h2 className="font-mono text-sm text-accent2">{"// pipeline"}</h2>
         <div className="flex items-center gap-3">
+          {state.error && (
+            <p role="alert" className="text-xs text-red-400">
+              {state.error}
+            </p>
+          )}
+          {!state.error && state.analyzed > 0 && (
+            <p className="font-mono text-[11px] text-dim">
+              {state.analyzed} deal{state.analyzed === 1 ? "" : "s"} re-analysed
+              {state.failed > 0 ? `, ${state.failed} failed` : ""}
+            </p>
+          )}
           <form action={refreshAction}>
             <button
               type="submit"
@@ -180,30 +186,31 @@ export default function PipelineMeters({
               {isRefreshing ? "analysing..." : "refresh"}
             </button>
           </form>
-          <button
-            type="button"
-            onClick={() => setIsOpen(false)}
-            className="font-mono text-xs text-dim transition-colors hover:text-accent"
-            aria-label="Hide the pipeline panel"
-          >
-            hide
-          </button>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col gap-4">
-        <HealthMeter metrics={metrics} />
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6 lg:divide-x lg:divide-line">
+        <div className="lg:pr-6">
+          <HealthMeter metrics={metrics} />
+        </div>
 
-        <div className="grid grid-cols-2 gap-4 border-t border-line pt-4">
+        <div className="lg:pl-6">
           <StatTile
-            label="Open"
+            label="Open pipeline"
             value={formatEuro(metrics.openValueEur)}
             footnote={`${metrics.openDeals} deal${metrics.openDeals === 1 ? "" : "s"}`}
           />
-          <StatTile label="Won" value={formatEuro(metrics.wonValueEur)} />
         </div>
 
-        <div className="border-t border-line pt-4">
+        <div className="lg:pl-6">
+          <StatTile
+            label="Won"
+            value={formatEuro(metrics.wonValueEur)}
+            footnote={`${metrics.wonDeals} deal${metrics.wonDeals === 1 ? "" : "s"}`}
+          />
+        </div>
+
+        <div className="lg:pl-6">
           <StatTile
             label="Open to won"
             value={
@@ -219,17 +226,6 @@ export default function PipelineMeters({
           />
         </div>
       </div>
-
-      {state.error && (
-        <p role="alert" className="mt-3 text-xs text-red-400">
-          {state.error}
-        </p>
-      )}
-      {!state.error && state.analyzed > 0 && (
-        <p className="mt-3 font-mono text-[11px] text-dim">
-          {state.analyzed} deal{state.analyzed === 1 ? "" : "s"} re-analysed.
-        </p>
-      )}
-    </aside>
+    </section>
   );
 }

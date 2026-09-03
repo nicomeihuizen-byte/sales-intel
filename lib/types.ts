@@ -136,6 +136,7 @@ export interface PipelineMetrics {
   analyzedDeals: number;
   openDeals: number;
   openValueEur: number;
+  wonDeals: number;
   wonValueEur: number;
   // Average months from a deal being created to being marked won. Null
   // until at least one deal has both dates.

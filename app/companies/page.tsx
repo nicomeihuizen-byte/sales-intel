@@ -29,7 +29,7 @@ import TerminalShell from "@/components/TerminalShell";
 
 // Deal Management: three panes across the top (companies, the selected
 // company's people, its deals), a preview of the selected deal underneath,
-// and the pipeline panel fixed bottom right.
+// with the pipeline strip across the top above them.
 //
 // Selection lives in the URL (?company=...&deal=...) rather than in client
 // state, which keeps every pane a Server Component reading straight from
@@ -175,6 +175,8 @@ export default async function CompaniesPage({
           </form>
         </div>
       </div>
+
+      <PipelineMeters metrics={metrics} />
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,14rem)_minmax(0,1.1fr)_minmax(0,1fr)]">
         <aside className="lg:border-r lg:border-line lg:pr-6">
@@ -371,8 +373,6 @@ export default async function CompaniesPage({
 
       {/* Padding so the fixed panel never covers the last note. */}
       <div className="h-40" aria-hidden="true" />
-
-      <PipelineMeters metrics={metrics} />
     </TerminalShell>
   );
 }

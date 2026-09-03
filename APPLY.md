@@ -1,122 +1,94 @@
-# Patch: Deal Management, pipeline panel, email drafts
+# Patch: fix "€ NaN", and move the pipeline to the top
 
-Copy the files over the top. No new dependencies.
-
-## Order
-
-```
-npm run db:backup
-npm run db:migrate
-```
-
-Then **before you push**, paste `RUN-THIS-ON-HOSTED.sql` (in this folder, identical to the new
-migration) into the hosted project's SQL editor. This one is not optional: the code queries
-columns and a table that don't exist there yet, so pushing first breaks the demo the same way
-the contacts migration did.
-
-Then, to give the demo something to show:
+Seven files over the top of what you're running. No migration, no env change, no
+`npm install`. Restart `npm run dev` after copying.
 
 ```
-npm run seed -- --confirm-wipe=<your hosted host>
+lib/deals.ts
+lib/companies.ts
+lib/types.ts
+lib/metrics.ts
+lib/featureFlags.ts
+components/DealValueField.tsx
+components/PipelineMeters.tsx
+components/TerminalShell.tsx
+app/companies/page.tsx
+.env.local.example
 ```
 
-with `.env.local` pointed at the hosted project. That's what fills the demo's meters.
+Add one line to `.env.local`:
 
-**Two things you need to add by hand:**
+```
+SHOW_CASE_STUDY_LINK=false
+```
 
-1. **Your logo at `public/logo.png`.** I couldn't fetch it, so the markup points there and
-   expects a file. Roughly 132x44; if you use an SVG, change the `src` in
-   `app/companies/page.tsx`. Until it exists you'll get a broken image in the header.
-2. Nothing else. `ALLOW_DESTRUCTIVE_ACTIONS` stays local-only as before.
+## The € NaN
 
-## What's in it
+A real bug, and a boring one. There were two places that select deals from the database, and
+they each had their own hardcoded list of columns. When the value column was added, only one
+list got it. Deals loaded through the companies pane arrived with `value_eur` undefined,
+`undefined` is not `null`, so the "unpriced" check passed it straight to the formatter and you
+got `€ NaN`.
 
-**"Deal Management"** replaces "Companies" as the title, and the demo login now lands here
-instead of `/deals`.
+Fixed at the source: `DEAL_COLUMNS` is now exported from `lib/deals.ts` and
+`lib/companies.ts` imports it, so there is one definition instead of two that can drift.
+`DealValueField` also now treats any non-finite value as unpriced, so a missing column would
+show a dash next time rather than NaN.
 
-**Scrollable panes.** Companies and contacts scroll; deals show three and scroll past that,
-with the height derived from that constant rather than a magic number that drifts away from it.
+This is exactly the failure mode a real test suite catches, and it's the third time this
+session that a duplicated constant has bitten. Worth remembering when you decide whether the
+Jest harness in AGENTS.md is worth an afternoon.
 
-**Deal value in euros**, click-to-edit on each row. The parser takes the ways you'd actually
-write it: `12500`, `12.500`, `12.500,50`, `€12 500`, `1.234.567`. An unpriced deal shows a dash,
-not `€0`, and is left out of the totals: nobody has decided what it's worth, and zero is a
-decision.
+## The value was there, invisibly
 
-**Last two notes** appear under the deals pane when you select a deal. The full timeline is
-still below.
+The `€ NaN` text *was* the button. So the fix above makes it show a dash, and a dash reads as
+a blank, which is no better. An unpriced deal now shows **"+ value"** with a hover
+background, which is a control rather than a gap. A priced deal shows the amount and behaves
+the same way.
 
-**Draft email** on each contact. Opens a panel, writes an English follow-up grounded in that
-deal's notes and shaped by its status (open gets a next step, won gets what comes after
-signature, lost keeps the door open honestly). Subject and body copy separately, because mail
-clients want them in different boxes. Nothing sends anything; the mailto link is still there
-next to it for writing your own.
+Zero is still never shown for an unpriced deal: zero is a decision, and no decision has been
+made.
 
-**Multiple emails and phones per contact**, as lists with a spare empty row so there's always
-somewhere to type the next one. Your existing single values migrate across.
+## The case study link
 
-## The pipeline panel, and one place I didn't build what you drew
+Gone on local, untouched on hosted, via `SHOW_CASE_STUDY_LINK`.
 
-Fixed bottom right, collapsible, with a `refresh` that re-analyses the open deals.
+The default is ON, the opposite polarity to `ALLOW_DESTRUCTIVE_ACTIONS`, and for the same
+reason in reverse: the deployment that must keep working should need no configuration. Hosted
+gets no new setting, and forgetting the local one costs a stray link rather than breaking the
+demo's way back to your portfolio.
 
-Your mockup had four semicircular gauges. I built **one meter and three figures**, and the
-reason is worth a paragraph. A gauge shows a ratio against a limit. Pipeline health has one:
-0 to 100. "Total won value" doesn't. To draw it as a gauge I'd have to invent a maximum for
-the needle to point at, and an invented scale is invented information, on a dashboard whose
-whole selling point is that it doesn't do that. So health is a meter and the three money and
-time figures are headline numbers.
+## Pipeline at the top
 
-**Health is stored, not live.** Analysis is an API call per deal; running that on every page
-load would be slow and would cost real money every time you opened the page. So each analysis
-is saved, the meter averages the saved ones, and `refresh` re-runs the open deals. Pressing
-Analyze on a single deal also updates its stored value, so ordinary use keeps the meter
-current for free. The panel says how many of your open deals have been analysed and how old
-the oldest reading is, rather than implying it's live.
+It's now a strip in the flow above the three panes, four cells across on a wide screen,
+stacking to two and then one as the window narrows.
 
-Deals that aren't analysed are left out of the average instead of counted as zero. An
-unanalysed deal is an unknown, and folding unknowns in as bad news would make the meter drop
-every time you added a deal.
+The collapse control is gone with the move. It existed because a fixed panel sat over the
+notes timeline and had to be dismissable; in the flow nothing has to move out of its way.
+`refresh` stays, since that's the only control there that does anything.
 
-**Conversion time** counts only deals with both dates. `closed_at` is stamped from now on when
-you mark a deal won or lost, so it reads "not enough data" until a few close through the app.
-Your existing won deals stay blank rather than being given a guessed date.
-
-A refresh is capped at 12 deals per press, so one click can't become forty API calls.
+The Won cell gained a deal count under it, matching Open, which meant adding `wonDeals` to
+the metrics type. That's why `lib/types.ts` and `lib/metrics.ts` are in the patch.
 
 ## Verified
 
 - `tsc --noEmit` clean, `eslint .` clean with no warnings, `next build` compiled and generated
   all routes.
-- **All four migrations applied three times in a row** against a real Postgres 16. The first
-  version of this one wasn't replayable (the second pass referenced a column the first had
-  dropped), which the third pass caught; it's now guarded and idempotent.
-- **The contact backfill was run against fixture rows**: a contact with both values moved to
-  `{a@b.example}` / `{+31 6 111}`, and contacts holding whitespace or nulls became empty lists
-  rather than lists containing an empty string.
-- **The euro parser was run through 15 cases**, all passing, including the one that caught a
-  real bug: `1.234.567` was rejected until I fixed the thousands-separator rule.
-- **The metrics maths was exercised against fixtures**: an unpriced deal stays out of the
-  totals, a stale insight left on a won deal is ignored by the health average, and a won deal
-  with no close date is skipped by the conversion time rather than counted as zero months.
-- **Not verified: how any of it looks.** No browser here. The header row now holds a title, a
-  logo and two links, and the fixed panel sits over the bottom right, so those are the two
-  places to look first.
+- **Not verified: how the strip looks at any width.** No browser here. The four-across layout
+  at your window size is the thing to check, and whether the health meter still reads well now
+  that it's a quarter of the width rather than the full panel.
 
 ## Suggested commit
 
 ```
-feat(companies): pipeline panel, deal values, email drafts
+fix(deals): correct euro value on the companies pane, move pipeline to top
 
-Renames the view to Deal Management and lands the demo login on it.
-Adds euro values to deals, scrollable panes, a two-note preview on the
-selected deal, and multiple emails and phones per contact.
+Two queries selected deals with separately hardcoded column lists, and
+only one gained value_eur, so deals loaded through the companies pane
+rendered "NaN". DEAL_COLUMNS is now shared, and DealValueField treats a
+non-finite value as unpriced.
 
-Adds a fixed pipeline panel: a health meter plus open value, won value
-and average time to win. Health reads stored analyses rather than
-calling the API on every page load, so the page stays instant; pressing
-Analyze on a deal also updates the stored value, and a refresh button
-re-runs the open deals with a cap.
-
-Adds an English follow-up email draft per contact, grounded in the
-deal's notes and status, offered as copyable text rather than anything
-that sends.
+The pipeline panel moves from fixed bottom-right into the page flow
+above the panes, losing its collapse control since nothing has to move
+out of its way there.
 ```
