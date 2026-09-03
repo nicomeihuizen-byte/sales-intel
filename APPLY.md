@@ -1,108 +1,113 @@
-# Patch v2: advice bullets, plus the IronGate fix
+# Patch: local development database (Phase A)
 
-**This replaces the first patch entirely.** Same four files, so if you already applied v1,
-just copy these over the top. If you haven't applied v1 at all, skip it and use this one.
+**Apply the v2 advice-bullets patch first and commit it, then apply this one.**
+This patch is built on top of v2, so the files in it already contain v2's changes. Doing it
+in that order gives you two clean commits. Doing it in one go works too, you just get one
+bigger commit.
 
-```
-lib/types.ts
-lib/ai.ts
-components/InsightPanel.tsx
-README.md
-```
+## Two manual steps the zip can't do for you
 
-Still no new dependencies, no env vars, no database change, no re-seed.
+**1. Delete `supabase/schema.sql`.** Its contents moved to
+`supabase/migrations/20260801000000_initial_schema.sql`. Copying files can't express a
+deletion, so this one is on you. `git status` should show it as deleted afterwards.
 
-## What went wrong on IronGate
+**2. `npm install` is not needed.** No dependencies changed. The Supabase CLI is invoked
+through `npx` with a pinned version rather than added to `package.json`, deliberately: a
+dependency there would pull a ~30MB binary download into every Vercel build, for tooling
+the deployed app never touches.
 
-The error you saw was as uninformative as it was possible to be. It said the shape didn't
-match, twice, and named nothing else. That's the first thing this patch fixes, and the
-reason it took a rewrite of the validation rather than a one-line tweak.
+Everything else is copy over the top, same as before.
 
-Three separate faults, all mine:
+## What this does
 
-**1. The prompt contradicted itself, and IronGate is the deal that exposes it.**
-The momentum prompt defines `at_risk` as "long silence, explicit pushback, or no plausible
-next step remains". Then, a paragraph later, it demands two to four next steps. IronGate is
-the single most at-risk deal in the seed set: champion resigned, five reconnect attempts
-unanswered. The model reads "no plausible next step remains", agrees, and returns an empty
-`nextSteps` array. Validation rejects it. That's not a model failure, it's the prompt
-asking for two incompatible things and the model picking the one stated as a definition.
+Nothing to the hosted demo. It keeps running exactly as it does now, from the same Supabase
+project, with the same seeded data. This adds a second place to run the app, on your
+machine, against a local Postgres.
 
-Fixed by rewording `at_risk` to "no plausible next step left **in the current approach**",
-and by stating explicitly that the list is never empty: a dead deal's actions are the clean
-close-out, the last named attempt, recording why. The uncomfortable recommendation is still
-a recommendation.
-
-**2. The retry was useless against exactly this kind of failure.**
-`MAX_ATTEMPTS = 2` sent the identical prompt twice. That only ever helps when the failure is
-random. A model that reads an instruction a certain way reads it the same way twice, so a
-deterministic failure was guaranteed to burn both attempts and produce "attempt 2 of 2".
-Now the second attempt replays the model's own tool call and answers it with an `is_error`
-tool result naming what was rejected. It gets told what was wrong instead of being asked
-the same question again.
-
-**3. Rejecting was the wrong response to most malformed output.**
-The old validator failed the entire analysis if the list had six items instead of five, or
-one stray blank string among four good ones. Both are formatting slips, not wrong answers,
-and both cost you a result you'd have been happy with. `normalizeActionList` now trims,
-drops blanks and caps at five. Only a genuinely empty result fails, because only then is
-there nothing to show.
-
-## What you'll see instead now
-
-Errors name their cause. Three distinguishable failures, none of which include note content
-or prompt text, so they're safe to surface in the panel:
+`sales-intel-documentation/local-setup.md` is the real documentation. Read that one. The
+short version:
 
 ```
-The AI's report_deal_momentum response was unusable after 2 attempts:
-  "nextSteps" was an empty array, expected an array of at least one non-empty string.
-
-  ... the response was cut off at the 1536 token limit, leaving an incomplete tool call.
-
-  ... no report_deal_momentum tool call came back (stop_reason: end_turn).
+npm run db:start        # first run pulls containers, takes a few minutes
+                        # it prints the API URL and anon key for .env.local
+npm run dev             # sign up with your own email at /login
 ```
 
-If you see the middle one, `MAX_RESPONSE_TOKENS` is too low. That was the other candidate
-for IronGate's failure and I couldn't rule it out from the old error message, which is
-precisely the problem. It's now raised from 1024 to 1536 as cheap insurance, and it reports
-itself distinctly if it ever bites.
+New scripts: `db:start`, `db:stop`, `db:status`, `db:reset`, `db:migration`, `db:backup`.
+
+## The three things that actually change
+
+**The schema is no longer a file you edit.** `supabase/schema.sql` becomes
+`supabase/migrations/20260801000000_initial_schema.sql`, and every future change is a new
+migration created with `npm run db:migration -- <name>`. `supabase db reset` replays them in
+filename order, which is what builds your local database. Editing an applied migration means
+your two databases quietly stop agreeing, and you find out months later.
+
+I made the policy statements re-runnable while moving them (`drop policy if exists` before
+each `create policy`). `create policy` has no `if not exists` form, so without that the
+migration failed on its second run and took everything after it down with it.
+
+**`npm run seed` can no longer wipe the wrong database.** It refuses unless you name the
+host you mean to destroy, and the name has to match `NEXT_PUBLIC_SUPABASE_URL`:
+
+```
+npm run seed -- --confirm-wipe=abcdefgh.supabase.co
+```
+
+A local host needs `--allow-local` on top, because local is where the real pipeline lives.
+The point of naming the host rather than passing a plain `--yes` is that a copied `.env.local`
+or plain muscle memory can't satisfy it.
+
+**Backups are now your job.** `npm run db:backup` dumps the local data to
+`backups/<timestamp>/`, git-ignored. Two files, because every row in `public` has a `user_id`
+pointing into `auth.users` and they have to be restored in that order. The restore procedure
+is in the doc.
+
+I've written it to fail loudly if a dump comes back suspiciously small, since a backup that
+silently produced an empty file is worse than no backup at all.
 
 ## Verified
 
-- `npx tsc --noEmit` clean, `npx eslint .` clean, `npm run build` compiled and generated all
-  10 routes (font stub workaround again, `app/layout.tsx` restored untouched afterwards).
-- I ran the new validator directly against the payloads I suspected. Results:
+- `tsc --noEmit` clean, `eslint` clean, `next build` compiled and generated all routes.
+- **The migration was applied twice against a real Postgres 16**, with a stub `auth.users`
+  table and `auth.uid()` function standing in for Supabase's. Both passes succeeded, and the
+  result was RLS enabled on all three tables, 3 policies, 8 indexes. The second pass is the
+  one that mattered: it's what `db:reset` does and what the old file would have failed.
+- **All five paths through the seed guard were run for real:**
 
-| Input | Result |
+| What I ran | What happened |
 | --- | --- |
-| `nextSteps: []` (the IronGate suspect) | rejected, and now says so by name |
-| six items | accepted, trimmed to five |
-| one blank among good ones | accepted, blank dropped |
-| all blank / not an array / missing | rejected, each named |
-| `status: "dead"` | rejected, lists the valid statuses |
-| one good item | accepted |
+| `npm run seed` with no flags | refused, printed the host it would have wiped |
+| `--confirm-wipe=127.0.0.1` against a hosted URL | refused, named both hosts |
+| `--confirm-wipe=<matching hosted host>` | passed the guard, proceeded |
+| `--confirm-wipe=127.0.0.1` against a local URL | refused, asked for `--allow-local` |
+| `--confirm-wipe=127.0.0.1 --allow-local` | passed the guard, proceeded |
 
-- Not verified: whether the prompt fix actually stops the model returning an empty list on
-  IronGate. That needs a live key. If it still fails, the error will now tell you which of
-  the three faults you're looking at, which is the point.
+- **Not verified: `npm run db:start` and `npm run db:backup`.** Both need Docker, which this
+  sandbox doesn't have. The migration content is tested, the CLI invocations are not. Run
+  `npm run db:backup` once on day one and check the two files have real content in them,
+  rather than finding out the first time you need a restore.
+
+## One thing worth doing on day one
+
+Restore a backup, while the database still holds nothing you'd miss. The procedure is at the
+end of the setup doc. A backup you have never restored is a hope, not a backup.
 
 ## Suggested commit
 
 ```
-feat(insight): add action bullets to all three analysis modes
+chore(db): add local development database and backup tooling
 
-Momentum, loss review and win review each return a 2-4 item action
-list alongside the reasoning: next steps on an open deal, a re-approach
-plan or lessons on a lost one, repeatable plays on a won one.
+Moves the schema into supabase/migrations so the Supabase CLI can
+provision a local Postgres with the same tables, indexes and RLS
+policies as the hosted project, and makes the policy statements
+re-runnable so db:reset works more than once.
 
-Validation now repairs what it can (trims to five items, drops blank
-entries) and rejects only an unusable payload, naming the offending
-field in the error rather than reporting a generic shape mismatch. The
-retry replays the rejection to the model instead of resending the same
-prompt, which could never fix a deterministic failure.
+Guards scripts/seed.ts, which wipes before it writes, behind an
+explicit --confirm-wipe=<host> that must match the configured Supabase
+URL, plus --allow-local for local targets. Adds scripts/backup.ts and
+db:* npm scripts, and documents the whole setup including what still
+leaves the machine on every Analyze click.
 
-Also rewords the at_risk definition, which said no plausible next step
-remains and so contradicted the request for next steps on exactly the
-deals that need them most, adds an em dash ban to the prompts, and
-raises max_tokens to 1536.
+The hosted demo project is unchanged and stays hand-managed.
 ```

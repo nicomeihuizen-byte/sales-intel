@@ -46,7 +46,7 @@ function toDealWithCompany(row: DealRow): DealWithCompany {
  * Returns every deal owned by the signed-in user, most recent first, with
  * the parent company's name joined in so the deal list doesn't need a
  * second round trip per row. Row Level Security on the `deals` table
- * (supabase/schema.sql) is what actually scopes this to the caller - this
+ * (supabase/migrations) is what actually scopes this to the caller - this
  * function issues an unfiltered select and relies on that policy.
  */
 export async function listDealsForUser(

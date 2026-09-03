@@ -49,7 +49,8 @@ sales-intel/
 │   ├── ai.ts                    # AI API wrapper + prompt logic
 │   └── types.ts
 ├── supabase/
-│   └── schema.sql               # table definitions
+│   ├── config.toml              # local Supabase stack config
+│   └── migrations/              # table definitions
 ├── .env.local                   # secrets, never committed
 ├── package.json
 └── README.md                    # the case-study writeup for recruiters
@@ -76,7 +77,7 @@ Write this down in the README's opening paragraph — you'll thank yourself late
 ### Phase 2 — Database schema
 - Create a Supabase project
 - Design 3 tables: `companies`, `deals`, `notes` (a deal belongs to a company, notes belong to a deal)
-- Write `supabase/schema.sql`, run it in the Supabase SQL editor
+- Write the initial migration in `supabase/migrations/`, applied by `npm run db:start` locally or run in the Supabase SQL editor for a hosted project
 - Add `lib/supabase.ts` with the client setup, using env vars
 - **Checkpoint:** you can insert/query rows from the Next.js app in a quick test API route
 

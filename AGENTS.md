@@ -59,7 +59,7 @@
 # Database & Supabase
 - Row Level Security (RLS) must be enabled on every table before it is queried from the app — an app-level auth check is not a substitute for RLS, it's a second layer on top of it
 - App-level queries go through the Supabase JS query builder (`.select()`, `.eq()`, etc.), which parameterizes under the hood — never build a query by concatenating a raw SQL string with user input
-- Raw SQL is only permitted in `supabase/schema.sql` (migrations/DDL), not in application code
+- Raw SQL is only permitted in `supabase/migrations/*.sql` (migrations/DDL), not in application code. Never edit a migration that has already been applied — add a new one with `npm run db:migration -- <name>`, so the local and hosted databases stay in step
 - `lib/supabase.ts` is the single place the client is constructed; don't instantiate ad hoc clients elsewhere
 
 # Auth & Sessions

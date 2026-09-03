@@ -7,7 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "db:start": "npx --yes supabase@2.116.0 start",
+    "db:stop": "npx --yes supabase@2.116.0 stop",
+    "db:status": "npx --yes supabase@2.116.0 status",
+    "db:reset": "npx --yes supabase@2.116.0 db reset",
+    "db:migration": "npx --yes supabase@2.116.0 migration new",
+    "db:backup": "tsx scripts/backup.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.1",

@@ -18,7 +18,7 @@ function isCreateNoteBody(value: unknown): value is CreateNoteBody {
 
 // CRUD for notes, scoped to a single deal via the `dealId` query param
 // (GET) or request body (POST). See lib/notes.ts for the underlying
-// queries; RLS on the `notes` table (supabase/schema.sql) is the real
+// queries; RLS on the `notes` table (supabase/migrations) is the real
 // access boundary.
 export async function GET(request: Request) {
   const supabase = await createServerSupabaseClient();

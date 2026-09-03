@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local database backups (scripts/backup.ts) - real deal data, never commit
+/backups
+
+# supabase cli local state
+/supabase/.temp
+/supabase/.branches

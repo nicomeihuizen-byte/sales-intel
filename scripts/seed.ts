@@ -5,11 +5,20 @@ config({ path: ".env.local" });
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { DealStatus } from "../lib/types";
 
-// Standalone seed script for demo data (Phase 6). Run locally with
-// `npm run seed` - never deployed, never imported by the app itself. Signs
+// Standalone seed script for demo data (Phase 6). Never deployed, never
+// imported by the app itself.
+//
+// THIS SCRIPT IS DESTRUCTIVE. It wipes the demo account's companies (and
+// every deal and note cascading from them) before inserting. It refuses to
+// run unless you name the host you mean to wipe - see assertWipeConfirmed
+// below:
+//
+//   npm run seed -- --confirm-wipe=<host from NEXT_PUBLIC_SUPABASE_URL>
+//
+// Signs
 // in as the demo account and inserts data through the same anon-key client
 // the app uses, so every insert goes through the normal Row Level Security
-// policies (supabase/schema.sql) instead of a service-role bypass.
+// policies (supabase/migrations) instead of a service-role bypass.
 //
 // console.log is fine here (unlike in app code, see AGENTS.md - Prohibited
 // Patterns): this is a CLI tool whose entire job is reporting progress to
@@ -386,6 +395,68 @@ async function resolveDemoUserId(
   );
 }
 
+/**
+ * Refuses to run unless the caller has named the exact database they mean
+ * to wipe. `main` below deletes every company row owned by the demo user,
+ * and every deal and note cascades from that, so this script is a
+ * destructive operation wearing an innocuous name.
+ *
+ * That was harmless while the only database was a hosted demo full of
+ * invented companies. It stopped being harmless the moment a local
+ * database started holding a real pipeline. A stale `.env.local`, a copied
+ * environment file or plain muscle memory are all it would take.
+ *
+ * The guard is deliberately annoying: `npm run seed` alone always
+ * refuses. You have to pass the host you intend to wipe, and it has to
+ * match the host in NEXT_PUBLIC_SUPABASE_URL:
+ *
+ *   npm run seed -- --confirm-wipe=abcdefgh.supabase.co
+ *
+ * A local host needs a second flag on top, because local is where the real
+ * data lives:
+ *
+ *   npm run seed -- --confirm-wipe=127.0.0.1 --allow-local
+ *
+ * Neither flag can be satisfied by copying a file around, which is the
+ * whole point. Confirming the wrong host fails loudly rather than wiping
+ * the wrong database quietly.
+ */
+function assertWipeConfirmed(supabaseUrl: string): void {
+  const targetHost = new URL(supabaseUrl).hostname;
+  const args = process.argv.slice(2);
+  const confirmed = args
+    .find((arg) => arg.startsWith("--confirm-wipe="))
+    ?.slice("--confirm-wipe=".length);
+  const allowLocal = args.includes("--allow-local");
+  const isLocalHost =
+    targetHost === "localhost" ||
+    targetHost === "127.0.0.1" ||
+    targetHost === "[::1]";
+
+  if (!confirmed) {
+    throw new Error(
+      `Refusing to seed. This deletes every company, deal and note owned by the demo account on ${targetHost}.\n` +
+        `If that is what you want, name the host explicitly:\n` +
+        `  npm run seed -- --confirm-wipe=${targetHost}${isLocalHost ? " --allow-local" : ""}`,
+    );
+  }
+
+  if (confirmed !== targetHost) {
+    throw new Error(
+      `Refusing to seed. You confirmed "${confirmed}" but .env.local points at "${targetHost}".\n` +
+        `Check which database NEXT_PUBLIC_SUPABASE_URL is pointing at before trying again.`,
+    );
+  }
+
+  if (isLocalHost && !allowLocal) {
+    throw new Error(
+      `Refusing to seed a local database without --allow-local.\n` +
+        `Local is where your real pipeline lives. If you really mean to wipe it and load demo data:\n` +
+        `  npm run seed -- --confirm-wipe=${targetHost} --allow-local`,
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -403,6 +474,8 @@ async function main(): Promise<void> {
       "SEED_DEMO_EMAIL and SEED_DEMO_PASSWORD must be set in .env.local (see .env.local.example).",
     );
   }
+
+  assertWipeConfirmed(supabaseUrl);
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
   const userId = await resolveDemoUserId(supabase, demoEmail, demoPassword);

@@ -6,7 +6,7 @@ import type { Note } from "./types";
 
 /**
  * Returns every note on a single deal, oldest first, so they read like a
- * timeline. Row Level Security on the `notes` table (supabase/schema.sql)
+ * timeline. Row Level Security on the `notes` table (supabase/migrations)
  * also confirms the deal belongs to the caller; this function doesn't
  * re-check ownership itself.
  */

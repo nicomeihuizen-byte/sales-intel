@@ -10,7 +10,7 @@ import { createMiddlewareSupabaseClient } from "@/lib/supabase";
 // Named `proxy` rather than `middleware` - Next.js 16 renamed the file
 // convention (same behavior, see node_modules/next/dist/docs). This is an
 // optimistic, UX-level redirect only; Row Level Security in
-// supabase/schema.sql is the actual access-control boundary underneath it.
+// supabase/migrations is the actual access-control boundary underneath it.
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request });
   const supabase = createMiddlewareSupabaseClient(request, response);

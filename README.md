@@ -73,7 +73,7 @@ For a deal that's already closed, the same button asks a different, status-appro
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase access, never exposed to the client |
 | `ANTHROPIC_API_KEY` | AI insight generation, server-side only |
 
-Run `supabase/schema.sql` in the Supabase SQL editor to create the `companies`, `deals`, and `notes` tables before starting the app.
+The `companies`, `deals`, and `notes` tables come from `supabase/migrations/`. For a local database, `npm run db:start` applies them automatically (see `sales-intel-documentation/local-setup.md`). For a hosted project, run the migration files in the Supabase SQL editor in filename order.
 
 ## Project structure
 
@@ -99,7 +99,8 @@ sales-intel/
 │   ├── ai.ts                    # AI API wrapper + prompt logic
 │   └── types.ts
 ├── supabase/
-│   └── schema.sql               # table definitions
+│   ├── config.toml              # local Supabase stack config
+│   └── migrations/              # table definitions, applied in filename order
 ├── .env.local                   # secrets, never committed
 └── package.json
 ```

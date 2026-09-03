@@ -1,4 +1,4 @@
-// Row types for the three Phase 2 tables (supabase/schema.sql). These match
+// Row types for the three Phase 2 tables (supabase/migrations). These match
 // the database columns exactly - if the schema changes, update both files
 // together.
 

@@ -18,7 +18,7 @@ function isCreateDealBody(value: unknown): value is CreateDealBody {
 
 // CRUD for deals. GET lists the signed-in user's deals (see lib/deals.ts);
 // POST creates one, finding or creating the parent company by name. Row
-// Level Security on the `deals`/`companies` tables (supabase/schema.sql) is
+// Level Security on the `deals`/`companies` tables (supabase/migrations) is
 // the real access boundary - the auth.getUser() check below just turns a
 // missing session into a clear 401 instead of an empty RLS-filtered result.
 export async function GET() {
