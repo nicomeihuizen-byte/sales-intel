@@ -48,6 +48,19 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<the anon key it printed>
 ANTHROPIC_API_KEY=<your real key, same as before>
 ```
 
+Add one more line, which only ever belongs in the local file:
+
+```
+ALLOW_DESTRUCTIVE_ACTIONS=true
+```
+
+That turns on removing deals and companies. It stays off on the hosted
+demo, which is a public page with a one-click login, so a delete button
+there is a stranger emptying your showcase. The flag is read by the server
+actions, not just by the code that draws the buttons, because hiding a
+button hides nothing: a server action is an HTTP endpoint whether or not
+anything on the page points at it.
+
 Leave `SEED_DEMO_EMAIL` and `SEED_DEMO_PASSWORD` out of the local file
 entirely. They exist for the hosted demo. Not having them here is one more
 reason a stray `npm run seed` can't do damage.
@@ -71,6 +84,8 @@ account is yours; it has nothing to do with the demo account.
 | `npm run db:stop` | Stops it. Data survives. |
 | `npm run db:status` | Prints the URL and keys again when you've lost them. |
 | `npm run db:backup` | Dumps the local data to `backups/<timestamp>/`. |
+| `npm run db:migrations` | Lists migrations and which have been applied locally. |
+| `npm run db:migrate` | Applies pending migrations. **Keeps your data.** |
 | `npm run db:migration -- <name>` | Creates a new empty migration file. |
 | `npm run db:reset` | **Destroys all local data** and rebuilds from migrations. |
 
@@ -93,16 +108,26 @@ Write the change in it as SQL that only ever adds:
 alter table deals add column if not exists blocked_reason text;
 ```
 
-Then:
+Then apply it:
 
 ```
 npm run db:backup
-npm run db:reset
+npm run db:migrate
 ```
 
-`db:reset` replays every migration from scratch against an empty database,
-which is the only honest test that your migration works on a fresh
-machine. It is also why the backup comes first.
+`db:migrate` runs only the migrations that haven't run yet and leaves your
+rows alone. That is the command for a database you care about.
+
+`db:reset` is the other one, and it is not the same thing. It drops
+everything and replays every migration from scratch, which is the only
+honest test that your migration works on a fresh machine, and the fastest
+way to lose a month of notes. Use it deliberately, after a backup, not as
+the normal way to apply a change.
+
+**And the hosted project is separate.** It has no migration history and is
+managed by hand, so a schema change has to be pasted into its SQL editor
+before you push code that depends on it. Push first and the live demo
+breaks: the code queries a column the hosted database doesn't have.
 
 Two rules that matter more than they look:
 

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Company } from "./types";
+import type { Company, Deal } from "./types";
 
 // Data-access layer for companies. Until the two-pane view existed,
 // companies were only ever created as a side effect of creating a deal
@@ -135,7 +135,7 @@ export async function createCompany(
 export async function listDealsForCompany(
   supabase: SupabaseClient,
   companyId: string,
-) {
+): Promise<Deal[]> {
   const { data, error } = await supabase
     .from("deals")
     .select("id, company_id, user_id, title, status, created_at")
@@ -146,5 +146,62 @@ export async function listDealsForCompany(
     throw new Error(`Failed to load deals for company: ${error.message}`);
   }
 
-  return data ?? [];
+  return (data ?? []) as Deal[];
+}
+
+/**
+ * Deletes a company only when nothing hangs off it.
+ *
+ * `companies` cascades to deals, which cascade to notes, so an unguarded
+ * delete here would take a note history with it on one click. Refusing
+ * unless the company is empty makes the destructive case unreachable
+ * without removing the deals first, which is a second deliberate act.
+ *
+ * That also matches the actual need: this exists to clean up the empty
+ * company a misspelled name leaves behind, not to wipe a real account.
+ *
+ * The count is read here rather than trusted from the page that rendered
+ * the button, because the page's numbers are from whenever it rendered and
+ * the decision has to be made against the database as it is now.
+ */
+export async function deleteCompanyIfEmpty(
+  supabase: SupabaseClient,
+  companyId: string,
+): Promise<void> {
+  const { count: dealCount, error: dealError } = await supabase
+    .from("deals")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", companyId);
+
+  if (dealError) {
+    throw new Error(`Failed to check for deals: ${dealError.message}`);
+  }
+
+  if ((dealCount ?? 0) > 0) {
+    throw new Error(
+      "This company still has deals. Remove those first, so their notes don't disappear with it.",
+    );
+  }
+
+  const { count: contactCount, error: contactError } = await supabase
+    .from("contacts")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", companyId);
+
+  if (contactError) {
+    throw new Error(`Failed to check for contacts: ${contactError.message}`);
+  }
+
+  if ((contactCount ?? 0) > 0) {
+    throw new Error("This company still has contacts. Remove those first.");
+  }
+
+  const { error } = await supabase
+    .from("companies")
+    .delete()
+    .eq("id", companyId);
+
+  if (error) {
+    throw new Error(`Failed to delete company: ${error.message}`);
+  }
 }

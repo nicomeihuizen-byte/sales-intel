@@ -12,6 +12,8 @@
     "db:stop": "npx --yes supabase@2.116.0 stop",
     "db:status": "npx --yes supabase@2.116.0 status",
     "db:reset": "npx --yes supabase@2.116.0 db reset",
+    "db:migrate": "npx --yes supabase@2.116.0 migration up --local",
+    "db:migrations": "npx --yes supabase@2.116.0 migration list --local",
     "db:migration": "npx --yes supabase@2.116.0 migration new",
     "db:backup": "tsx scripts/backup.ts"
   },

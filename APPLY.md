@@ -1,101 +1,110 @@
-# Patch: companies pane, contacts, and editable notes
+# Patch: three panes, editable status, and deletion
 
-Copy over the top, same as before. Nothing to delete this time, and no new dependencies.
+**This replaces the three-panes patch I sent a moment ago.** If you already applied that one,
+copy these over the top. If you haven't, skip it and use this instead. Everything from it is
+included here.
 
-**One extra step, because this one changes the database:**
-
-```
-npm run db:backup          # first, while you still can
-npm run db:reset           # replays both migrations onto an empty database
-```
-
-`db:reset` destroys the local data. If you've already entered real deals, restore them from
-the backup afterwards using the procedure at the end of `local-setup.md`, or skip `db:reset`
-and apply just the new migration by hand:
+## Apply
 
 ```
-npx --yes supabase@2.116.0 db push --local
+npm run db:backup
+npm run db:migrate
 ```
 
-The new migration is `supabase/migrations/20260903120000_contacts_and_note_edits.sql`.
+Add one line to `.env.local`, which is what switches deletion on:
 
-## What you get
+```
+ALLOW_DESTRUCTIVE_ACTIONS=true
+```
 
-**`/companies`**, a two-pane view. Companies on the left with a deal and contact count each;
-select one and the right pane shows its people and its deals; select a deal and its notes and
-the Analyze panel open underneath. `/deals` is untouched and still there, linked from the
-header, because the company-first view can't answer "what needs attention today".
+Restart `npm run dev` afterwards, since env changes only land at startup.
 
-Selection lives in the URL (`/companies?company=...&deal=...`) rather than in client state.
-That keeps every pane a Server Component reading straight from Supabase, and it means a
-company you're working on is a link you can bookmark and the back button behaves.
+**Before you push**, paste this into the hosted project's SQL editor:
 
-**Contacts**: name, role, email, phone, LinkedIn, attached to a company. Only the name is
-required, because a prospect usually starts as a name and a LinkedIn profile with nothing
-else. Add, edit and remove inline. The add form stays open and clears itself after each save,
-since stakeholders arrive two and three at a time.
+```sql
+alter table deals drop constraint if exists deals_status_check;
 
-**Editable notes**, on both the new view and the existing deal page.
+alter table deals
+  add constraint deals_status_check
+  check (status in ('open', 'won', 'lost'));
+```
 
-## The decisions worth knowing about
+**Do not add `ALLOW_DESTRUCTIVE_ACTIONS` to Vercel.** That is the whole mechanism.
 
-**Editing a note never moves it in the timeline.** `created_at` is untouched; a new
-`updated_at` column records the edit and the note shows "edited" beside its original date.
-This matters more than it looks: `lib/ai.ts` reasons about the *gaps between* note dates, so
-a note that jumped to today because you fixed a typo would quietly change the model's read of
-that deal's entire history. The editor says "the date stays as it was" while you're in it.
+## Deletion, and why it's a server-side flag
 
-**Contact links are scheme-checked before they render.** `lib/links.ts` turns email, phone and
-profile values into hrefs and returns null for anything it doesn't like, in which case the
-value renders as plain text instead of a link. This is your own house rule (AGENTS.md, HTML
-and JavaScript Security Hardening) and it's not theoretical here: contact fields are text you
-type, stored in a database, rendered back as clickable links, which is exactly the shape that
-turns a pasted `javascript:` URL into a working script link.
+You're right that it can't ship to hosted. The demo is a public page with a one-click login,
+so anyone arriving from your case study can press any button on it.
 
-**A React 19 rule forced a rewrite of how the forms close.** The obvious "close the editor
-when the action succeeds" is a `useEffect` that calls `setState`, which
-`react-hooks/set-state-in-effect` rejects, and your lint config treats as an error rather than
-a warning. The fix is `lib/useActionSuccess.ts`, which detects a completed action by comparing
-the state object's identity during render instead. That's the pattern React documents for this
-case. Worth reading, since it'll come up every time you add a form.
+The flag is read by the server actions, not only by the code that draws the buttons. Hiding a
+button hides nothing: a server action is a real HTTP endpoint that exists whether or not
+anything on the page points at it, so a `NEXT_PUBLIC_` flag would be a suggestion the browser
+is free to ignore. `lib/featureFlags.ts` is server-side, and every delete action re-checks it
+itself.
+
+It fails closed. Unset means no deletion, so forgetting to configure something leaves the demo
+safe and the local app missing a button, which is visible and harmless. The other direction
+fails silently and in public.
+
+**Deals** get a two-step remove in the deals pane: the first click asks "remove + notes?",
+the second does it. Two clicks rather than a browser `confirm()` dialog, which blocks the page
+and looks like a browser artefact rather than part of your app. The second click matters
+because deleting a deal cascades through its whole note history.
+
+**Companies can only be removed when empty**, no deals and no contacts. A company cascades to
+its deals and those cascade to their notes, so an unguarded delete here is a note history gone
+on one click. The count is checked server-side against the database as it is now, not against
+the numbers the page rendered with. That also matches what this is actually for: clearing up
+the leftover, not wiping an account.
+
+## The cause, not just the symptom
+
+You described the real problem exactly: misspell the company and the deal attaches to nothing.
+That's `createDeal` finding-or-creating a company by *name*, so "Minitb" quietly becomes a
+second company holding one orphaned deal, with nothing on screen saying so.
+
+So the deals pane now has its own **add deal** form, where the company is the one you already
+have selected and there is no name to mistype. The form on `/deals` is unchanged and still
+works the old way. Deletion cleans up the mess you already have; this stops making more.
+
+This is more than you asked for, and it's the part I'd keep if you only kept one.
+
+## Also in here (from the superseded patch)
+
+Three panes, editable deal status, a CHECK constraint on `deals.status`, and the `db:migrate`
+and `db:migrations` scripts.
 
 ## Verified
 
-- `tsc --noEmit` clean, `eslint .` clean (no warnings either), `next build` compiled and
-  generated all 10 routes including `/companies`.
-- **Both migrations applied twice in order against a real Postgres 16.** Result: RLS on all
-  four tables, 4 policies, `notes` carrying `updated_at`, `contacts` carrying all nine columns.
-  The second pass is what `db:reset` does.
-- **`lib/links.ts` was run against hostile input**, not just reasoned about:
-
-| Input | Result |
-| --- | --- |
-| `javascript:alert(1)`, and the mixed-case and padded variants | null, renders as text |
-| `data:text/html,<script>...` | null |
-| `vbscript:msgbox(1)` | null |
-| `linkedin.com/in/nico` (no scheme) | `https://linkedin.com/in/nico` |
-| `nico@meihuizen.ai\nBcc: someone@else` (header injection) | null |
-| `+31 6 1234 5678` | `tel:+31612345678` |
-
-- **Not verified: anything that needs a browser.** No Docker in the sandbox, so the two-pane
-  layout has never been rendered, only compiled. Check it on a narrow window too: the panes
-  stack below `md` and I couldn't look at that.
+- `tsc --noEmit` clean, `eslint .` clean, `next build` compiled and generated all routes.
+- The status constraint applied twice against a real Postgres 16, and the check rejects
+  `'closed'` while accepting `'won'`.
+- **`deleteCompanyIfEmpty` was run against a stubbed client for all four cases**: empty company
+  deletes; one deal, two contacts, and both refuse with the right message, and none of the
+  refusals reached the delete.
+- **The flag was run through its values**: `true`, `TRUE`, `True` and `" true "` all enable it;
+  `1`, `yes`, `false`, empty and unset all leave it off.
+- **Not verified: how any of it looks.** No browser here. Worth checking the deals pane in
+  particular, which now holds a title, a status dropdown and a remove control in one row.
 
 ## Suggested commit
 
 ```
-feat(companies): add companies pane, contacts, and editable notes
+feat(companies): three panes, editable status, guarded deletion
 
-Adds /companies, a two-pane view with companies and their contacts on
-the left and the selected company's deals and notes on the right, with
-selection held in the URL so every pane stays a Server Component.
+Splits the companies view into companies, contacts and deals across
+three columns, with the selected deal's notes and Analyze panel full
+width underneath. Deal status becomes editable, backed by a CHECK
+constraint since the value decides which question the insight route
+asks the model.
 
-Adds a contacts table (name required, everything else optional) with
-inline add, edit and remove, and lib/links.ts to scheme-check email,
-phone and profile values before they are bound to an href.
+Adds deletion of deals, and of companies that hold nothing, behind
+ALLOW_DESTRUCTIVE_ACTIONS. The flag is server-side and re-checked
+inside each action rather than only where the buttons render, because
+a server action is reachable whether or not the UI points at it. It is
+deliberately absent on the hosted demo, which is public.
 
-Notes become editable on both views. created_at is deliberately left
-alone on edit so the momentum analysis, which reasons about the gaps
-between note dates, cannot be skewed by a typo fix; a new updated_at
-records the edit instead.
+Adds an add-deal form to the companies pane, where the company is
+already selected. That removes the typo path that silently created a
+second company holding one orphaned deal.
 ```

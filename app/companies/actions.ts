@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase";
-import { createCompany } from "@/lib/companies";
+import { createCompany, deleteCompanyIfEmpty } from "@/lib/companies";
+import { createDealForCompany, deleteDeal } from "@/lib/deals";
+import { destructiveActionsEnabled } from "@/lib/featureFlags";
 import {
   createContact,
   deleteContact,
@@ -190,5 +192,125 @@ export async function deleteContactAction(
   }
 
   revalidatePath("/companies");
+  return { error: null };
+}
+
+/**
+ * Every action below can destroy data, so each one re-checks
+ * destructiveActionsEnabled() itself rather than trusting that the page
+ * only renders its button when the flag is on. A server action is a real
+ * HTTP endpoint: it exists whether or not anything on the page points at
+ * it, so hiding the button is presentation and this check is the control.
+ */
+function assertDestructiveAllowed(): string | null {
+  return destructiveActionsEnabled()
+    ? null
+    : "Deleting is turned off in this environment.";
+}
+
+export async function createDealForCompanyAction(
+  companyId: string,
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const title = formData.get("title");
+
+  if (typeof title !== "string") {
+    return { error: "A deal needs a title." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    await createDealForCompany(supabase, userId, companyId, title);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to create deal.",
+    };
+  }
+
+  revalidatePath("/companies");
+  revalidatePath("/deals");
+  return { error: null };
+}
+
+export async function deleteDealAction(
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const blocked = assertDestructiveAllowed();
+
+  if (blocked) {
+    return { error: blocked };
+  }
+
+  const dealId = formData.get("dealId");
+
+  if (typeof dealId !== "string") {
+    return { error: "Could not work out which deal to remove." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    await deleteDeal(supabase, dealId);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to remove deal.",
+    };
+  }
+
+  revalidatePath("/companies");
+  revalidatePath("/deals");
+  return { error: null };
+}
+
+export async function deleteCompanyAction(
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const blocked = assertDestructiveAllowed();
+
+  if (blocked) {
+    return { error: blocked };
+  }
+
+  const companyId = formData.get("companyId");
+
+  if (typeof companyId !== "string") {
+    return { error: "Could not work out which company to remove." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    await deleteCompanyIfEmpty(supabase, companyId);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to remove company.",
+    };
+  }
+
+  revalidatePath("/companies");
+  revalidatePath("/deals");
   return { error: null };
 }

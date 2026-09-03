@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase";
-import { createDeal } from "@/lib/deals";
+import { createDeal, isDealStatus, updateDealStatus } from "@/lib/deals";
 import { createNote, getNoteDealId, updateNote } from "@/lib/notes";
 
 export interface DealActionState {
@@ -133,5 +133,53 @@ export async function updateNoteAction(
   }
 
   revalidatePath("/companies");
+  return { error: null };
+}
+
+export interface DealStatusActionState {
+  error: string | null;
+}
+
+/**
+ * Changes a deal's status from the picker in the deals pane.
+ *
+ * Worth being clear about what this does beyond relabelling: the status
+ * decides which question app/api/insight/route.ts asks the model. Marking
+ * a deal won swaps the momentum read for a win analysis, marking it lost
+ * swaps it for a loss post-mortem. The picker's helper text says so, since
+ * it is not obvious from a dropdown.
+ */
+export async function updateDealStatusAction(
+  dealId: string,
+  _previousState: DealStatusActionState,
+  formData: FormData,
+): Promise<DealStatusActionState> {
+  const status = formData.get("status");
+
+  if (!isDealStatus(status)) {
+    return { error: "That is not a deal status." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "You must be signed in to change a deal." };
+  }
+
+  try {
+    await updateDealStatus(supabase, dealId, status);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to change status.",
+    };
+  }
+
+  revalidatePath("/companies");
+  revalidatePath("/deals");
+  revalidatePath(`/deals/${dealId}`);
   return { error: null };
 }

@@ -177,3 +177,116 @@ export async function createDeal(
 
   return data as Deal;
 }
+
+/**
+ * The three statuses a deal can hold, matching the deals_status_check
+ * constraint in supabase/migrations and the branches in
+ * app/api/insight/route.ts. Exported so the status picker renders exactly
+ * these and nothing drifts between the UI, the API and the database.
+ */
+export const DEAL_STATUSES: DealStatus[] = ["open", "won", "lost"];
+
+export function isDealStatus(value: unknown): value is DealStatus {
+  return (
+    typeof value === "string" && DEAL_STATUSES.includes(value as DealStatus)
+  );
+}
+
+/**
+ * Changes a deal's status. Validated here as well as by the database
+ * constraint: the constraint is the backstop, but a rejected value should
+ * come back as "that isn't a status" rather than as a raw Postgres
+ * constraint violation shown to the user.
+ *
+ * Changing status changes which question the AI asks about the deal (see
+ * app/api/insight/route.ts), so marking a deal won or lost is not just a
+ * label - the next Analyze click runs a different analysis entirely.
+ */
+export async function updateDealStatus(
+  supabase: SupabaseClient,
+  dealId: string,
+  status: DealStatus,
+): Promise<Deal> {
+  if (!isDealStatus(status)) {
+    throw new Error(`"${status}" is not a deal status.`);
+  }
+
+  const { data, error } = await supabase
+    .from("deals")
+    .update({ status })
+    .eq("id", dealId)
+    .select("id, company_id, user_id, title, status, created_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to update deal status: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("That deal no longer exists.");
+  }
+
+  return data as Deal;
+}
+
+/**
+ * Creates a deal on a company that already exists, for the form inside the
+ * companies view where the company is whatever you have selected.
+ *
+ * This is the fix for the typo problem, not just a convenience. createDeal
+ * above finds-or-creates a company by NAME, so "Minitb" quietly becomes a
+ * second company holding one orphaned deal, and nothing about the form
+ * tells you that happened. Choosing the company instead of typing it makes
+ * that outcome unreachable.
+ */
+export async function createDealForCompany(
+  supabase: SupabaseClient,
+  userId: string,
+  companyId: string,
+  title: string,
+): Promise<Deal> {
+  const trimmed = title.trim();
+
+  if (!trimmed) {
+    throw new Error("A deal needs a title.");
+  }
+
+  const { data, error } = await supabase
+    .from("deals")
+    .insert({
+      user_id: userId,
+      company_id: companyId,
+      title: trimmed,
+      status: "open",
+    })
+    .select("id, company_id, user_id, title, status, created_at")
+    .single();
+
+  if (error || !data) {
+    throw new Error(
+      `Failed to create deal: ${error?.message ?? "unknown error"}`,
+    );
+  }
+
+  return data as Deal;
+}
+
+/**
+ * Deletes a deal and, by the `notes.deal_id` foreign key's `on delete
+ * cascade`, every note on it. That cascade is the reason the UI asks for a
+ * second click: the deal row is small and the note history behind it is
+ * not.
+ *
+ * Callers must check destructiveActionsEnabled() first. This function is
+ * the mechanism, not the policy.
+ */
+export async function deleteDeal(
+  supabase: SupabaseClient,
+  dealId: string,
+): Promise<void> {
+  const { error } = await supabase.from("deals").delete().eq("id", dealId);
+
+  if (error) {
+    throw new Error(`Failed to delete deal: ${error.message}`);
+  }
+}

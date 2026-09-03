@@ -9,37 +9,35 @@ import { listContactsForCompany } from "@/lib/contacts";
 import { listNotesForDeal } from "@/lib/notes";
 import { getDealById } from "@/lib/deals";
 import { signOut } from "@/app/login/actions";
+import { deleteCompanyAction, deleteDealAction } from "@/app/companies/actions";
+import { destructiveActionsEnabled } from "@/lib/featureFlags";
 import ContactList from "@/components/ContactList";
+import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
+import DealStatusPicker from "@/components/DealStatusPicker";
+import NewDealInCompanyForm from "@/components/NewDealInCompanyForm";
 import NewCompanyForm from "@/components/NewCompanyForm";
 import NoteList from "@/components/NoteList";
 import NoteForm from "@/components/NoteForm";
 import InsightPanel from "@/components/InsightPanel";
 import TerminalShell from "@/components/TerminalShell";
-import type { DealStatus } from "@/lib/types";
 
-// Companies view: the list on the left, the selected company's people and
-// deals on the right, and the selected deal's notes below those.
+// Companies view: three panes across the top (companies, the selected
+// company's people, its deals) and the selected deal's notes underneath,
+// full width.
+//
+// Notes sit below rather than in a fourth column on purpose. A note is a
+// paragraph of prose and the three columns above are lists; squeezing a
+// timeline into a quarter of the width makes the one thing you actually
+// read the hardest thing to read.
 //
 // Selection lives in the URL (?company=...&deal=...) rather than in client
-// state, which keeps every pane a Server Component that reads straight
-// from Supabase. It also means a company or a deal you are working on is a
-// link you can bookmark, and the back button does what you expect.
+// state, which keeps every pane a Server Component reading straight from
+// Supabase. It also means a company or deal you are working on is a link
+// you can bookmark, and the back button does what you expect.
 //
 // The separate /deals list is still there and still the place to answer
 // "what needs attention today", a question this company-first view cannot
 // answer by design.
-
-const STATUS_LABEL: Record<DealStatus, string> = {
-  open: "Open",
-  won: "Won",
-  lost: "Lost",
-};
-
-const STATUS_STYLE: Record<DealStatus, string> = {
-  open: "text-accent",
-  won: "text-violet-400",
-  lost: "text-muted",
-};
 
 interface CompaniesPageProps {
   searchParams: Promise<{ company?: string; deal?: string }>;
@@ -55,6 +53,10 @@ export default async function CompaniesPage({
   } = await supabase.auth.getUser();
 
   const companies = await listCompaniesForUser(supabase);
+
+  // Read once here and passed down, so the panes render consistently. The
+  // actions check it again themselves - this only decides what is drawn.
+  const canDelete = destructiveActionsEnabled();
 
   // An id in the URL that no longer resolves (deleted, or someone else's,
   // which RLS makes indistinguishable) falls back to showing nothing
@@ -83,7 +85,7 @@ export default async function CompaniesPage({
     : [];
 
   return (
-    <TerminalShell label="~/companies" maxWidthClassName="max-w-6xl">
+    <TerminalShell label="~/companies" maxWidthClassName="max-w-7xl">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl font-semibold text-accent">
           Companies
@@ -107,8 +109,8 @@ export default async function CompaniesPage({
       </div>
       <p className="mt-2 text-muted">Signed in as {user?.email}.</p>
 
-      <div className="mt-8 grid gap-8 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-        <aside className="md:border-r md:border-line md:pr-6">
+      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,14rem)_minmax(0,1.1fr)_minmax(0,1fr)]">
+        <aside className="lg:border-r lg:border-line lg:pr-6">
           <h2 className="font-mono text-sm text-accent2">{"// list"}</h2>
 
           <ul className="mt-3 flex flex-col gap-1">
@@ -146,97 +148,124 @@ export default async function CompaniesPage({
           <NewCompanyForm />
         </aside>
 
-        <section className="min-w-0">
-          {!selectedCompany && (
+        <section className="min-w-0 lg:border-r lg:border-line lg:pr-6">
+          {!selectedCompany ? (
             <p className="text-sm text-muted">
               Pick a company on the left to see its people and its deals.
             </p>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="font-display text-xl font-semibold text-foreground">
+                  {selectedCompany.name}
+                </h2>
+                {/* Only offered on an empty company. Deleting one with
+                    deals would cascade through their notes, and this
+                    exists to clear up the leftover a misspelled name
+                    creates, not to wipe an account. */}
+                {canDelete &&
+                  deals.length === 0 &&
+                  contacts.length === 0 && (
+                    <ConfirmDeleteButton
+                      action={deleteCompanyAction}
+                      hiddenFields={{ companyId: selectedCompany.id }}
+                      label="remove company"
+                    />
+                  )}
+              </div>
+              <ContactList companyId={selectedCompany.id} contacts={contacts} />
+            </>
           )}
+        </section>
 
+        <section className="min-w-0">
           {selectedCompany && (
             <>
-              <h2 className="font-display text-xl font-semibold text-foreground">
-                {selectedCompany.name}
-              </h2>
+              <h2 className="font-mono text-sm text-accent2">{"// deals"}</h2>
 
-              <ContactList
-                companyId={selectedCompany.id}
-                contacts={contacts}
-              />
-
-              <section className="mt-8">
-                <h2 className="font-mono text-sm text-accent2">
-                  {"// deals"}
-                </h2>
-
-                {deals.length === 0 && (
-                  <p className="mt-3 text-sm text-muted">
-                    No deals for this company yet. Add one from the deals
-                    view.
-                  </p>
-                )}
-
-                <ul className="mt-3 flex flex-col gap-2">
-                  {deals.map((deal) => {
-                    const isSelected = deal.id === selectedDeal?.id;
-
-                    return (
-                      <li key={deal.id}>
-                        <Link
-                          href={`/companies?company=${selectedCompany.id}&deal=${deal.id}`}
-                          aria-current={isSelected ? "true" : undefined}
-                          className={`flex items-center justify-between rounded border px-4 py-3 transition-colors ${
-                            isSelected
-                              ? "border-accent-dim bg-background"
-                              : "border-line hover:border-accent-dim"
-                          }`}
-                        >
-                          <span className="font-medium text-foreground">
-                            {deal.title}
-                          </span>
-                          <span
-                            className={`font-mono text-xs uppercase ${STATUS_STYLE[deal.status as DealStatus]}`}
-                          >
-                            {STATUS_LABEL[deal.status as DealStatus]}
-                          </span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-
-              {dealBelongsHere && selectedDeal && (
-                <section className="mt-8 border-t border-line pt-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-display text-lg font-semibold text-foreground">
-                      {selectedDeal.title}
-                    </h2>
-                    <Link
-                      href={`/deals/${selectedDeal.id}`}
-                      className="font-mono text-xs text-dim hover:text-accent"
-                    >
-                      open full page
-                    </Link>
-                  </div>
-
-                  <InsightPanel
-                    dealId={selectedDeal.id}
-                    dealStatus={selectedDeal.status}
-                  />
-
-                  <NoteForm dealId={selectedDeal.id} />
-
-                  <h3 className="mt-8 font-mono text-sm text-accent2">
-                    {"// notes"}
-                  </h3>
-                  <NoteList notes={notes} />
-                </section>
+              {deals.length === 0 && (
+                <p className="mt-3 text-sm text-muted">
+                  No deals for this company yet.
+                </p>
               )}
+
+              <ul className="mt-3 flex flex-col gap-2">
+                {deals.map((deal) => {
+                  const isSelected = deal.id === selectedDeal?.id;
+
+                  return (
+                    <li
+                      key={deal.id}
+                      className={`flex items-center gap-3 rounded border px-3 py-2.5 transition-colors ${
+                        isSelected
+                          ? "border-accent-dim bg-background"
+                          : "border-line hover:border-accent-dim"
+                      }`}
+                    >
+                      {/* The link and the status picker are siblings, not
+                          nested: a select inside an anchor is invalid HTML
+                          and the two fight over the click. Side by side
+                          also means a deal can be reclassified without
+                          opening it. */}
+                      <Link
+                        href={`/companies?company=${selectedCompany.id}&deal=${deal.id}`}
+                        aria-current={isSelected ? "true" : undefined}
+                        className="min-w-0 flex-1 text-sm font-medium text-foreground"
+                      >
+                        {deal.title}
+                      </Link>
+                      <DealStatusPicker
+                        dealId={deal.id}
+                        status={deal.status}
+                      />
+                      {canDelete && (
+                        <ConfirmDeleteButton
+                          action={deleteDealAction}
+                          hiddenFields={{ dealId: deal.id }}
+                          confirmLabel="remove + notes?"
+                        />
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <NewDealInCompanyForm companyId={selectedCompany.id} />
             </>
           )}
         </section>
       </div>
+
+      {dealBelongsHere && selectedDeal && (
+        <section className="mt-10 border-t border-line pt-6">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              <h2 className="font-display text-lg font-semibold text-foreground">
+                {selectedDeal.title}
+              </h2>
+              <p className="mt-0.5 font-mono text-xs text-dim">
+                {selectedDeal.company_name}
+              </p>
+            </div>
+            <Link
+              href={`/deals/${selectedDeal.id}`}
+              className="shrink-0 font-mono text-xs text-dim hover:text-accent"
+            >
+              open full page
+            </Link>
+          </div>
+
+          <InsightPanel
+            dealId={selectedDeal.id}
+            dealStatus={selectedDeal.status}
+          />
+
+          <NoteForm dealId={selectedDeal.id} />
+
+          <h3 className="mt-8 font-mono text-sm text-accent2">{"// notes"}</h3>
+          <NoteList notes={notes} />
+        </section>
+      )}
     </TerminalShell>
   );
 }
