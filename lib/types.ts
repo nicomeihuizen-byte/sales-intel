@@ -36,6 +36,11 @@ export type DealMomentum = "healthy" | "stalling" | "at_risk";
 export interface DealInsight {
   status: DealMomentum;
   reasoning: string;
+  // Concrete actions the rep should take next on this specific deal, in
+  // priority order, rendered as bullets under the reasoning. Always at
+  // least one entry: a deal still in play always has something to do,
+  // even if that something is "decide whether to disqualify it".
+  nextSteps: string[];
 }
 
 // Loss post-mortem result, for a deal already marked "lost" - a separate
@@ -49,6 +54,12 @@ export type LossReviewVerdict = "confirmed_lost" | "worth_revisiting";
 export interface DealLossReview {
   verdict: LossReviewVerdict;
   reasoning: string;
+  // What to actually do about the loss. The verdict changes what these
+  // mean, which is why the panel labels them differently per verdict: on
+  // "worth_revisiting" they are the steps of a re-approach (who to
+  // contact, what to lead with, when), on "confirmed_lost" they are what
+  // to do differently in the next deal of this shape.
+  recommendedActions: string[];
 }
 
 // Win analysis result, for a deal already marked "won" - the mirror of
@@ -66,4 +77,9 @@ export type WinPattern =
 export interface DealWinReview {
   pattern: WinPattern;
   reasoning: string;
+  // The plays from this deal a rep could deliberately run again in the
+  // next one. Phrased as instructions ("open the security review before
+  // the pilot ends"), not as observations about what happened, so the
+  // list is usable on a different deal than the one it came from.
+  repeatablePlays: string[];
 }

@@ -28,7 +28,7 @@ It's not a CRM clone. It does one thing an off-the-shelf CRM doesn't: reason abo
 
 The easy version of this project is "paste your notes into a prompt and print whatever comes back." That's not what this does.
 
-The AI feature takes a deal's *entire* note history, with each note timestamped. It's asked to reason about **momentum**, not to summarize content. It has to weigh things like: how long since the last touch, whether recent notes show forward motion (next steps, dates, commitments) or stalling language (vague follow-ups, no response, pushed timelines), and how that compares to the deal's earlier trajectory. The output is a structured status (`healthy` / `stalling` / `at risk`) plus a short, specific reasoning string explaining *why*. That's the part that's actually hard to get right, and the part that makes this a judgment tool rather than a text-in/text-out wrapper.
+The AI feature takes a deal's *entire* note history, with each note timestamped. It's asked to reason about **momentum**, not to summarize content. It has to weigh things like: how long since the last touch, whether recent notes show forward motion (next steps, dates, commitments) or stalling language (vague follow-ups, no response, pushed timelines), and how that compares to the deal's earlier trajectory. The output is a structured status (`healthy` / `stalling` / `at risk`), a short reasoning string explaining *why*, and two to four next steps written as things you could do this week. The reasoning says what is happening. The next steps say what to do about it. That second half is what separates a judgment tool from a text-in/text-out wrapper.
 
 All of that reasoning happens server-side. The AI provider's API key never reaches the browser, so it can't be lifted from devtools or a network tab.
 
@@ -48,9 +48,9 @@ All of that reasoning happens server-side. The AI provider's API key never reach
 1. Log a deal, then log notes against it over time (calls, emails, meetings).
 2. Open the deal and click **Analyze**.
 3. A server route pulls the full, timestamped note history and sends it to the model with a prompt built around momentum, not summarization.
-4. The model returns a structured status (`healthy` / `stalling` / `at risk`) and a short reasoning string, rendered on the deal page.
+4. The model returns a structured status (`healthy` / `stalling` / `at risk`), a short reasoning string, and a bulleted list of next steps, all rendered on the deal page.
 
-For a deal that's already closed, the same button asks a different, status-appropriate question instead of a repeat momentum read.
+For a deal that's already closed, the same button asks a different, status-appropriate question instead of a repeat momentum read. A lost deal gets a post-mortem plus either a re-approach plan or a list of what to do differently next time. A won deal gets a win analysis plus the plays worth repeating in the next deal.
 
 ## Screenshots
 
@@ -112,7 +112,7 @@ Actively being built, phase by phase:
 - [x] Database schema (`companies`, `deals`, `notes`)
 - [x] Auth (sign up / log in / log out, protected routes)
 - [x] Core CRUD for deals and notes
-- [x] AI insight feature (stalled-deal detection with reasoning)
+- [x] AI insight feature (stalled-deal detection with reasoning and next steps)
 - [x] Seed data + demo polish
 - [x] Live demo link and screenshots above
 

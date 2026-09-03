@@ -56,6 +56,16 @@ const WIN_REVIEW_LABEL: Record<WinPattern, string> = {
   recovered_momentum: "Recovered momentum",
 };
 
+// Heading above the action bullets. The loss review is the one case where
+// the heading depends on the verdict rather than the mode: on a deal
+// that's worth revisiting the items are a re-approach plan, on a
+// confirmed loss they're lessons for the next deal, and calling both
+// "Recommended actions" would blur two genuinely different lists.
+const LOSS_ACTIONS_HEADING: Record<LossReviewVerdict, string> = {
+  confirmed_lost: "What to do differently",
+  worth_revisiting: "How to revisit",
+};
+
 // Per-status copy for the panel. A Record keyed by DealStatus reads more
 // clearly here than a chain of status === "x" ? ... : ... ternaries once
 // there are three statuses to cover instead of two.
@@ -67,19 +77,19 @@ const PANEL_CONFIG: Record<
     title: "Momentum",
     buttonLabel: "Analyze",
     placeholder:
-      "Click Analyze to get a reasoned read on this deal's momentum.",
+      "Click Analyze for a reasoned read on this deal's momentum, plus the next steps it points to.",
   },
   lost: {
     title: "Loss review",
     buttonLabel: "Review loss",
     placeholder:
-      "Click Review loss to check whether this loss looks final or worth revisiting.",
+      "Click Review loss to check whether this loss looks final or worth revisiting, and what to do about it.",
   },
   won: {
     title: "Win analysis",
     buttonLabel: "Review win",
     placeholder:
-      "Click Review win to see what made this deal work and what's repeatable.",
+      "Click Review win to see what made this deal work and which plays are worth repeating.",
   },
 };
 
@@ -97,6 +107,52 @@ interface AnalyzeResponse {
 
 function isAnalyzeResponse(value: unknown): value is AnalyzeResponse {
   return typeof value === "object" && value !== null;
+}
+
+/**
+ * The advice bullets under an analysis result. Takes the already-validated
+ * string array from the API response (lib/ai.ts guarantees one to five
+ * non-blank entries, so there is no empty-list state to design for) and a
+ * `heading` naming what kind of list it is, since the same component
+ * renders next steps, revisit actions and repeatable plays.
+ *
+ * The heading is a real h3 rather than a styled div: it is the only
+ * heading this block has, and it sits under the panel's h2 (see AGENTS.md
+ * - Webpage Heading Hierarchy). The bullet marker is a mono ">" instead of
+ * list-disc to match the terminal theme, with `list-none` so the browser
+ * doesn't render a second marker beside it.
+ */
+function ActionList({
+  heading,
+  items,
+}: {
+  heading: string;
+  items: string[];
+}) {
+  return (
+    <div className="mt-4">
+      <h3 className="font-mono text-xs uppercase tracking-wide text-muted">
+        {heading}
+      </h3>
+      <ul className="mt-2 list-none space-y-1.5">
+        {items.map((item, index) => (
+          // The index is part of the key because the list is fixed for the
+          // lifetime of a result (nothing reorders or filters it) and two
+          // items could in principle come back with identical text, which
+          // would collide on text alone.
+          <li
+            key={`${index}-${item}`}
+            className="flex gap-2 text-sm text-foreground"
+          >
+            <span aria-hidden="true" className="font-mono text-accent">
+              {">"}
+            </span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function parseAnalyzeResult(body: AnalyzeResponse): AnalyzeResult | null {
@@ -127,6 +183,14 @@ function parseAnalyzeResult(body: AnalyzeResponse): AnalyzeResult | null {
  *   revisiting later.
  * - won: a win analysis instead (fast & clean / steady & thorough /
  *   recovered momentum) - what made it work and what's repeatable.
+ *
+ * Whichever question gets asked, the result is a badge, a reasoning
+ * paragraph, and an ActionList of two to four bullets. The bullets are
+ * the advice half of the product: the reasoning says what is happening,
+ * the bullets say what to do about it. Their heading changes per mode
+ * ("Next steps", "How to revisit" / "What to do differently", "Worth
+ * repeating") because the same generic label over three different kinds
+ * of list would hide the difference between them.
  *
  * Fetches on demand rather than on page load, since each call is a real
  * AI request.
@@ -204,6 +268,7 @@ export default function InsightPanel({
           <p className="mt-2 text-sm text-foreground">
             {result.insight.reasoning}
           </p>
+          <ActionList heading="Next steps" items={result.insight.nextSteps} />
         </div>
       )}
 
@@ -217,6 +282,10 @@ export default function InsightPanel({
           <p className="mt-2 text-sm text-foreground">
             {result.review.reasoning}
           </p>
+          <ActionList
+            heading={LOSS_ACTIONS_HEADING[result.review.verdict]}
+            items={result.review.recommendedActions}
+          />
         </div>
       )}
 
@@ -230,6 +299,10 @@ export default function InsightPanel({
           <p className="mt-2 text-sm text-foreground">
             {result.review.reasoning}
           </p>
+          <ActionList
+            heading="Worth repeating"
+            items={result.review.repeatablePlays}
+          />
         </div>
       )}
 

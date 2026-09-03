@@ -20,6 +20,24 @@ import type {
 const MODEL = "claude-sonnet-5";
 const MAX_ATTEMPTS = 2;
 
+// Raised from 512 when the three tools started returning an action list
+// alongside the reasoning string. A truncated tool_use block fails
+// validation and burns a retry, so the ceiling is set well above the
+// realistic worst case (a long reasoning plus five action items) rather
+// than trimmed to it.
+const MAX_RESPONSE_TOKENS = 1024;
+
+// The action list every one of the three tools returns, under a different
+// property name each time (nextSteps / recommendedActions /
+// repeatablePlays). The prompts ask for two to four items; validation
+// accepts one to five. The floor is deliberately looser than the ask: a
+// deal where only one action genuinely matters is a legitimate answer,
+// and rejecting it would turn a good result into a user-facing error
+// after two attempts. The ceiling exists because a list past five stops
+// being a set of next steps and becomes a wall of text.
+const MIN_ACTION_ITEMS = 1;
+const MAX_ACTION_ITEMS = 5;
+
 const MOMENTUM_TOOL_NAME = "report_deal_momentum";
 const VALID_MOMENTUM_STATUSES: DealMomentum[] = [
   "healthy",
@@ -40,18 +58,39 @@ const VALID_WIN_PATTERNS: WinPattern[] = [
   "recovered_momentum",
 ];
 
+/**
+ * True when `value` is an array of MIN_ACTION_ITEMS to MAX_ACTION_ITEMS
+ * non-blank strings. Used by all three validators below against whichever
+ * property that tool calls its action list. A whitespace-only entry counts
+ * as absent, so ["Call the CFO", "   "] fails rather than rendering an
+ * empty bullet in the panel.
+ */
+function isActionList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= MIN_ACTION_ITEMS &&
+    value.length <= MAX_ACTION_ITEMS &&
+    value.every((item) => typeof item === "string" && item.trim().length > 0)
+  );
+}
+
 function isDealInsight(value: unknown): value is DealInsight {
   if (typeof value !== "object" || value === null) {
     return false;
   }
 
-  const candidate = value as { status?: unknown; reasoning?: unknown };
+  const candidate = value as {
+    status?: unknown;
+    reasoning?: unknown;
+    nextSteps?: unknown;
+  };
 
   return (
     typeof candidate.status === "string" &&
     VALID_MOMENTUM_STATUSES.includes(candidate.status as DealMomentum) &&
     typeof candidate.reasoning === "string" &&
-    candidate.reasoning.trim().length > 0
+    candidate.reasoning.trim().length > 0 &&
+    isActionList(candidate.nextSteps)
   );
 }
 
@@ -60,13 +99,18 @@ function isDealLossReview(value: unknown): value is DealLossReview {
     return false;
   }
 
-  const candidate = value as { verdict?: unknown; reasoning?: unknown };
+  const candidate = value as {
+    verdict?: unknown;
+    reasoning?: unknown;
+    recommendedActions?: unknown;
+  };
 
   return (
     typeof candidate.verdict === "string" &&
     VALID_LOSS_VERDICTS.includes(candidate.verdict as LossReviewVerdict) &&
     typeof candidate.reasoning === "string" &&
-    candidate.reasoning.trim().length > 0
+    candidate.reasoning.trim().length > 0 &&
+    isActionList(candidate.recommendedActions)
   );
 }
 
@@ -75,13 +119,18 @@ function isDealWinReview(value: unknown): value is DealWinReview {
     return false;
   }
 
-  const candidate = value as { pattern?: unknown; reasoning?: unknown };
+  const candidate = value as {
+    pattern?: unknown;
+    reasoning?: unknown;
+    repeatablePlays?: unknown;
+  };
 
   return (
     typeof candidate.pattern === "string" &&
     VALID_WIN_PATTERNS.includes(candidate.pattern as WinPattern) &&
     typeof candidate.reasoning === "string" &&
-    candidate.reasoning.trim().length > 0
+    candidate.reasoning.trim().length > 0 &&
+    isActionList(candidate.repeatablePlays)
   );
 }
 
@@ -98,6 +147,27 @@ function formatNoteHistory(notes: NoteForAnalysis[]): string {
       return `[${date}] ${note.content}`;
     })
     .join("\n");
+}
+
+// Appended to all three prompts. The em dash ban mirrors AGENTS.md
+// (Text Formatting for Generated Prose): the model's output is prose this
+// project ships, so it follows the same rule the rest of the copy does.
+const PROSE_STYLE_RULES = `Write in plain English, the way a rep would say it out loud. Never use an em dash or an en dash as a pause; use a comma, a semicolon or a second sentence instead.`;
+
+/**
+ * The shared instruction block for an action list. `listLabel` names the
+ * property the tool expects (nextSteps, recommendedActions,
+ * repeatablePlays) and `itemBrief` says what one item should contain, so
+ * each prompt gets the same rules about specificity and length without
+ * repeating them three times.
+ */
+function buildActionListInstruction(
+  listLabel: string,
+  itemBrief: string,
+): string {
+  return `Also return ${listLabel}: two to four items, most important first. ${itemBrief}
+
+Every item must be an instruction someone could act on this week, grounded in something the notes actually say: name the person, the objection, the document or the date involved. One short sentence each, at most about 15 words, no trailing period needed. Reject your own first draft of an item if it would read the same on any other deal, for example "follow up with the customer", "maintain regular communication" or "keep the relationship warm".`;
 }
 
 function daysBetween(earlierIso: string, laterDate: Date): number {
@@ -129,7 +199,14 @@ Classify the deal as exactly one of:
 - stalling: the cadence has slowed or recent notes show hesitation with no clear next step, but the deal is not dead
 - at_risk: long silence, explicit pushback, or no plausible next step remains
 
-Call ${MOMENTUM_TOOL_NAME} with your classification and a short reasoning (one to three sentences) that cites specifics from the note history above, such as dates or what was actually said. Do not write a generic summary of the notes.`;
+Call ${MOMENTUM_TOOL_NAME} with your classification and a short reasoning (one to three sentences) that cites specifics from the note history above, such as dates or what was actually said. Do not write a generic summary of the notes.
+
+${buildActionListInstruction(
+  "nextSteps",
+  "These are the concrete moves that would get this deal moving again, or keep it moving if it is healthy. Match them to the classification you chose: a healthy deal needs the next step that protects the close, a stalling deal needs the specific unblocking action, an at-risk deal needs either a real recovery attempt or an honest call on whether to disqualify it.",
+)}
+
+${PROSE_STYLE_RULES}`;
 }
 
 function buildLossReviewPrompt(
@@ -150,7 +227,14 @@ Classify as exactly one of:
 - confirmed_lost: the reason for losing is clear and there is no realistic path to revisit, for example they explicitly chose a competitor and seem satisfied, or the underlying need went away
 - worth_revisiting: there is a specific gap, such as an objection that was never fully addressed, a stakeholder who was never reached, or a timing factor that could change, suggesting a future check-in could be worthwhile
 
-Call ${LOSS_REVIEW_TOOL_NAME} with your verdict and a short reasoning (one to three sentences) that cites specifics from the notes. If you classify as worth_revisiting, name the specific avenue that was not explored rather than writing a generic "keep in touch" recommendation.`;
+Call ${LOSS_REVIEW_TOOL_NAME} with your verdict and a short reasoning (one to three sentences) that cites specifics from the notes. If you classify as worth_revisiting, name the specific avenue that was not explored rather than writing a generic "keep in touch" recommendation.
+
+${buildActionListInstruction(
+  "recommendedActions",
+  "What these items contain depends on your verdict. For worth_revisiting, they are the steps of an actual re-approach: who to contact, what to lead with, and roughly when, tied to the trigger that would make the timing right. For confirmed_lost, they are what to do differently in the next deal that looks like this one, pointing at the moment in this history where it went wrong.",
+)}
+
+${PROSE_STYLE_RULES}`;
 }
 
 function buildWinReviewPrompt(
@@ -172,7 +256,35 @@ Classify the overall pattern as exactly one of:
 - steady_and_thorough: a longer cycle that progressed with consistent forward motion and no major stalls
 - recovered_momentum: the deal had a real stall, gap, or setback partway through but still closed
 
-Call ${WIN_REVIEW_TOOL_NAME} with your classification and a short reasoning (one to three sentences) that names specific, repeatable factors visible in the notes, such as dates or what was actually said.`;
+Call ${WIN_REVIEW_TOOL_NAME} with your classification and a short reasoning (one to three sentences) that names specific, repeatable factors visible in the notes, such as dates or what was actually said.
+
+${buildActionListInstruction(
+  "repeatablePlays",
+  "These are the plays from this deal a rep should deliberately run again in the next one. Write each as an instruction for a future deal, not as an observation about this one: \"open the security review before the pilot ends\" rather than \"the security review started early\".",
+)}
+
+${PROSE_STYLE_RULES}`;
+}
+
+/**
+ * The JSON-schema fragment for one of the three action lists. The
+ * min/max here mirror MIN_ACTION_ITEMS/MAX_ACTION_ITEMS so the schema the
+ * model sees and the validator that checks its answer can't drift apart.
+ * Schema bounds are a hint to the model, not a guarantee, which is why
+ * isActionList still re-checks the length after the fact.
+ */
+function buildActionListSchema(description: string): Record<string, unknown> {
+  return {
+    type: "array",
+    minItems: MIN_ACTION_ITEMS,
+    maxItems: MAX_ACTION_ITEMS,
+    items: {
+      type: "string",
+      description:
+        "One specific, actionable instruction of about 15 words or fewer.",
+    },
+    description,
+  };
 }
 
 interface StructuredToolCallOptions<T> {
@@ -202,7 +314,7 @@ async function requestStructuredToolCall<T>(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 512,
+      max_tokens: MAX_RESPONSE_TOKENS,
       messages: [{ role: "user", content: prompt }],
       tools: [
         {
@@ -242,9 +354,9 @@ function requireApiKey(): string {
 
 /**
  * Analyzes an open deal's note history and returns a momentum
- * classification plus a specific, cited reasoning string. Only meaningful
- * for a deal still in play - see reviewLostDeal for the closed-deal
- * equivalent.
+ * classification, a specific cited reasoning string, and a nextSteps list
+ * of two to four concrete actions for this deal. Only meaningful for a
+ * deal still in play - see reviewLostDeal for the closed-deal equivalent.
  */
 export async function analyzeDealMomentum(
   dealTitle: string,
@@ -271,8 +383,11 @@ export async function analyzeDealMomentum(
           description:
             "A short, specific, plain-English explanation that cites the notes.",
         },
+        nextSteps: buildActionListSchema(
+          "Two to four concrete next actions for this deal, most important first, each grounded in the note history.",
+        ),
       },
-      required: ["status", "reasoning"],
+      required: ["status", "reasoning", "nextSteps"],
     },
     validate: isDealInsight,
   });
@@ -284,6 +399,11 @@ export async function analyzeDealMomentum(
  * later. This is a different question from momentum (which assumes the
  * deal is still open), so it gets its own prompt, tool, and result type
  * (DealLossReview) rather than overloading DealInsight's status values.
+ *
+ * The recommendedActions list is verdict-dependent by design: on
+ * worth_revisiting it is a re-approach plan, on confirmed_lost it is what
+ * to change in the next deal of this shape. Both branches always return a
+ * list, so a confirmed loss still leaves the rep with something to use.
  */
 export async function reviewLostDeal(
   dealTitle: string,
@@ -310,8 +430,11 @@ export async function reviewLostDeal(
           description:
             "A short, specific, plain-English explanation that cites the notes. If worth_revisiting, names the specific unexplored avenue.",
         },
+        recommendedActions: buildActionListSchema(
+          "Two to four actions: the steps of a re-approach if worth_revisiting, or what to do differently in the next similar deal if confirmed_lost.",
+        ),
       },
-      required: ["verdict", "reasoning"],
+      required: ["verdict", "reasoning", "recommendedActions"],
     },
     validate: isDealLossReview,
   });
@@ -323,6 +446,10 @@ export async function reviewLostDeal(
  * Momentum classification (healthy/stalling/at_risk) doesn't apply to a
  * deal that already closed, so this gets its own prompt, tool, and result
  * type (DealWinReview) rather than reusing DealInsight.
+ *
+ * The repeatablePlays list is the part meant to travel: each item is
+ * phrased as an instruction for a future deal, so it stays useful once
+ * this deal is closed and archived.
  */
 export async function reviewWonDeal(
   dealTitle: string,
@@ -349,8 +476,11 @@ export async function reviewWonDeal(
           description:
             "A short, specific, plain-English explanation that names repeatable factors visible in the notes.",
         },
+        repeatablePlays: buildActionListSchema(
+          "Two to four plays from this deal, each written as an instruction to run again in a future deal rather than as an observation about this one.",
+        ),
       },
-      required: ["pattern", "reasoning"],
+      required: ["pattern", "reasoning", "repeatablePlays"],
     },
     validate: isDealWinReview,
   });
