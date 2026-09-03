@@ -21,11 +21,14 @@ export default async function DealsPage() {
           Deals
         </h1>
         <div className="flex items-center gap-4">
+          {/* Named for where it goes, not for the route that serves it.
+              /companies renders the Deal Management screen, and "companies"
+              here read as a different, third place. */}
           <Link
             href="/companies"
             className="font-mono text-sm text-muted hover:text-accent"
           >
-            companies
+            &lt; Deal Management
           </Link>
           <form action={signOut}>
             <button

@@ -467,7 +467,7 @@ export default function ContactList({
       )}
 
       {contacts.length > 0 && (
-        <ul className="mt-3 flex max-h-[26rem] flex-col gap-2 overflow-y-auto pr-1">
+        <ul className="mt-3 flex flex-col gap-2">
           {contacts.map((contact) => (
             <ContactRow key={contact.id} contact={contact} dealId={dealId} />
           ))}

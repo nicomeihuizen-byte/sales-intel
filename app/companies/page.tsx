@@ -36,16 +36,6 @@ import TerminalShell from "@/components/TerminalShell";
 // Supabase. It also means a company or deal you are working on is a link
 // you can bookmark, and the back button does what you expect.
 
-// The deals pane shows this many and scrolls for the rest. Three is what
-// fits beside the fixed pipeline panel without the two fighting for the
-// same corner of the screen.
-const VISIBLE_DEALS = 3;
-
-// One deal row plus its gap, in rem. Kept as a number so the pane height
-// is derived from VISIBLE_DEALS rather than a magic max-height that
-// silently stops matching it.
-const DEAL_ROW_REM = 3.45;
-
 // How many recent notes appear in the preview under the deals pane. The
 // full timeline is still below, so this is a reminder of where things
 // stand, not a replacement for reading them.
@@ -182,7 +172,7 @@ export default async function CompaniesPage({
         <aside className="lg:border-r lg:border-line lg:pr-6">
           <h2 className="font-mono text-sm text-accent2">{"// list"}</h2>
 
-          <ul className="mt-3 flex max-h-[28rem] flex-col gap-1 overflow-y-auto pr-1">
+          <ul className="mt-3 flex flex-col gap-1">
             {companies.length === 0 && (
               <li className="text-sm text-muted">
                 No companies yet. Add one below.
@@ -260,13 +250,7 @@ export default async function CompaniesPage({
                 </p>
               )}
 
-              {/* Sized to show VISIBLE_DEALS and scroll past that, rather
-                  than truncating the list: a deal you cannot see is a deal
-                  you forget. */}
-              <ul
-                className="mt-3 flex flex-col gap-2 overflow-y-auto pr-1"
-                style={{ maxHeight: `${VISIBLE_DEALS * DEAL_ROW_REM}rem` }}
-              >
+              <ul className="mt-3 flex flex-col gap-2">
                 {deals.map((deal) => {
                   const isSelected = deal.id === selectedDeal?.id;
 

@@ -60,6 +60,15 @@ function notesFromTimeline(entries: Array<[number, string]>): SeedNote[] {
   return entries.map(([daysAgo, content]) => ({ daysAgo, content }));
 }
 
+/**
+ * The age of the earliest note on a deal, used to backdate the deal
+ * itself. Returns 0 for a deal with no notes, which dates it today - the
+ * only sensible answer when there is nothing to date it from.
+ */
+function oldestNoteDaysAgo(notes: SeedNote[]): number {
+  return notes.reduce((oldest, note) => Math.max(oldest, note.daysAgo), 0);
+}
+
 // Note timelines are written to land on one classification each once
 // analyzed, so the AI feature has something to catch on a first-time demo:
 // Acme Robotics reads healthy (steady cadence, forward movement, ending
@@ -216,7 +225,7 @@ const SEED_DATA: SeedCompany[] = [
         title: "Renewal FY26",
         status: "won",
         valueEur: 31500,
-        closedDaysAgo: 21,
+        closedDaysAgo: 3,
         notes: [
           {
             daysAgo: 20,
@@ -247,7 +256,7 @@ const SEED_DATA: SeedCompany[] = [
         title: "Pilot Program",
         status: "lost",
         valueEur: 19000,
-        closedDaysAgo: 45,
+        closedDaysAgo: 20,
         notes: [
           {
             daysAgo: 45,
@@ -634,6 +643,12 @@ async function main(): Promise<void> {
           title: deal.title,
           status: deal.status,
           value_eur: deal.valueEur ?? null,
+          // A deal starts when its first note was written, not when the
+          // seed script ran. Without this every deal is created "today",
+          // which makes the open-to-won metric compute a negative
+          // interval against a closed_at in the past and discard it, so
+          // the panel reads "not enough data" on a fully seeded demo.
+          created_at: daysAgoIso(oldestNoteDaysAgo(deal.notes), now),
           closed_at:
             deal.closedDaysAgo === undefined
               ? null
