@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { createDeal } from "@/lib/deals";
-import { createNote } from "@/lib/notes";
+import { createNote, getNoteDealId, updateNote } from "@/lib/notes";
 
 export interface DealActionState {
   error: string | null;
@@ -84,5 +84,54 @@ export async function createNoteAction(
   }
 
   revalidatePath(`/deals/${dealId}`);
+  revalidatePath("/companies");
+  return { error: null };
+}
+
+/**
+ * Rewrites an existing note from the inline editor in NoteList. Takes only
+ * the note id from the client: the deal to revalidate is looked up
+ * server-side (getNoteDealId) rather than trusted from the form, so a
+ * tampered dealId can't be used to probe which deals exist by watching
+ * which paths revalidate.
+ *
+ * The note's created_at is untouched by design - see updateNote in
+ * lib/notes.ts for why that matters to the momentum analysis.
+ */
+export async function updateNoteAction(
+  noteId: string,
+  _previousState: NoteActionState,
+  formData: FormData,
+): Promise<NoteActionState> {
+  const content = formData.get("content");
+
+  if (typeof content !== "string") {
+    return { error: "Note content is required." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "You must be signed in to edit a note." };
+  }
+
+  try {
+    await updateNote(supabase, { noteId, content });
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to edit note.",
+    };
+  }
+
+  const dealId = await getNoteDealId(supabase, noteId);
+
+  if (dealId) {
+    revalidatePath(`/deals/${dealId}`);
+  }
+
+  revalidatePath("/companies");
   return { error: null };
 }

@@ -5,6 +5,7 @@ import { getDealById } from "@/lib/deals";
 import { listNotesForDeal } from "@/lib/notes";
 import NoteForm from "@/components/NoteForm";
 import InsightPanel from "@/components/InsightPanel";
+import NoteList from "@/components/NoteList";
 import TerminalShell from "@/components/TerminalShell";
 
 interface DealDetailPageProps {
@@ -44,21 +45,7 @@ export default async function DealDetailPage({
       <NoteForm dealId={deal.id} />
 
       <h2 className="mt-10 font-mono text-sm text-accent2">{"// notes"}</h2>
-      <ul className="mt-3 flex flex-col gap-3">
-        {notes.length === 0 && (
-          <li className="text-sm text-muted">
-            No notes yet. Add the first one above.
-          </li>
-        )}
-        {notes.map((note) => (
-          <li key={note.id} className="rounded border border-line px-4 py-3">
-            <p className="text-sm text-foreground">{note.content}</p>
-            <p className="mt-1 text-xs text-dim">
-              {new Date(note.created_at).toLocaleString()}
-            </p>
-          </li>
-        ))}
-      </ul>
+      <NoteList notes={notes} />
     </TerminalShell>
   );
 }

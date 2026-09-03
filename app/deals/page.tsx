@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { listDealsForUser } from "@/lib/deals";
 import { signOut } from "@/app/login/actions";
@@ -19,14 +20,22 @@ export default async function DealsPage() {
         <h1 className="font-display text-2xl font-semibold text-accent">
           Deals
         </h1>
-        <form action={signOut}>
-          <button
-            type="submit"
+        <div className="flex items-center gap-4">
+          <Link
+            href="/companies"
             className="font-mono text-sm text-muted hover:text-accent"
           >
-            Log out
-          </button>
-        </form>
+            companies
+          </Link>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="font-mono text-sm text-muted hover:text-accent"
+            >
+              Log out
+            </button>
+          </form>
+        </div>
       </div>
       <p className="mt-2 text-muted">Signed in as {user?.email}.</p>
 

@@ -26,6 +26,25 @@ export interface Note {
   user_id: string;
   content: string;
   created_at: string;
+  // Set on every edit. created_at is what the timeline and the AI's gap
+  // reasoning use, so editing a note never changes where it sits in the
+  // history - updated_at only records that the text was corrected.
+  updated_at: string;
+}
+
+// A person at a company. Only `name` is required: a prospect often starts
+// as a name and a LinkedIn profile, and the rest arrives later.
+export interface Contact {
+  id: string;
+  company_id: string;
+  user_id: string;
+  name: string;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedin_url: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // The stalled-deal insight result (Phase 5). Declared here now so lib/ai.ts

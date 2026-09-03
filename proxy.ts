@@ -4,7 +4,8 @@ import { createMiddlewareSupabaseClient } from "@/lib/supabase";
 // Refreshes the Supabase session cookie on every request (access tokens
 // expire and need rotating - without this, a page could render with a
 // stale/expired token) and enforces the two auth rules for this app:
-// unauthenticated visitors are redirected away from /deals, and already
+// unauthenticated visitors are redirected away from /deals and
+// /companies, and already
 // signed-in visitors are redirected away from /login.
 //
 // Named `proxy` rather than `middleware` - Next.js 16 renamed the file
@@ -19,7 +20,13 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isProtectedRoute = request.nextUrl.pathname.startsWith("/deals");
+  // Every signed-in workspace route. /companies was added alongside
+  // /deals and needs the same treatment: without it, the two-pane view
+  // renders its shell to a signed-out visitor before the data queries
+  // come back empty.
+  const isProtectedRoute = ["/deals", "/companies"].some((prefix) =>
+    request.nextUrl.pathname.startsWith(prefix),
+  );
   const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
 
   if (!user && isProtectedRoute) {

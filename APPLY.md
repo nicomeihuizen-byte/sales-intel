@@ -1,113 +1,101 @@
-# Patch: local development database (Phase A)
+# Patch: companies pane, contacts, and editable notes
 
-**Apply the v2 advice-bullets patch first and commit it, then apply this one.**
-This patch is built on top of v2, so the files in it already contain v2's changes. Doing it
-in that order gives you two clean commits. Doing it in one go works too, you just get one
-bigger commit.
+Copy over the top, same as before. Nothing to delete this time, and no new dependencies.
 
-## Two manual steps the zip can't do for you
-
-**1. Delete `supabase/schema.sql`.** Its contents moved to
-`supabase/migrations/20260801000000_initial_schema.sql`. Copying files can't express a
-deletion, so this one is on you. `git status` should show it as deleted afterwards.
-
-**2. `npm install` is not needed.** No dependencies changed. The Supabase CLI is invoked
-through `npx` with a pinned version rather than added to `package.json`, deliberately: a
-dependency there would pull a ~30MB binary download into every Vercel build, for tooling
-the deployed app never touches.
-
-Everything else is copy over the top, same as before.
-
-## What this does
-
-Nothing to the hosted demo. It keeps running exactly as it does now, from the same Supabase
-project, with the same seeded data. This adds a second place to run the app, on your
-machine, against a local Postgres.
-
-`sales-intel-documentation/local-setup.md` is the real documentation. Read that one. The
-short version:
+**One extra step, because this one changes the database:**
 
 ```
-npm run db:start        # first run pulls containers, takes a few minutes
-                        # it prints the API URL and anon key for .env.local
-npm run dev             # sign up with your own email at /login
+npm run db:backup          # first, while you still can
+npm run db:reset           # replays both migrations onto an empty database
 ```
 
-New scripts: `db:start`, `db:stop`, `db:status`, `db:reset`, `db:migration`, `db:backup`.
-
-## The three things that actually change
-
-**The schema is no longer a file you edit.** `supabase/schema.sql` becomes
-`supabase/migrations/20260801000000_initial_schema.sql`, and every future change is a new
-migration created with `npm run db:migration -- <name>`. `supabase db reset` replays them in
-filename order, which is what builds your local database. Editing an applied migration means
-your two databases quietly stop agreeing, and you find out months later.
-
-I made the policy statements re-runnable while moving them (`drop policy if exists` before
-each `create policy`). `create policy` has no `if not exists` form, so without that the
-migration failed on its second run and took everything after it down with it.
-
-**`npm run seed` can no longer wipe the wrong database.** It refuses unless you name the
-host you mean to destroy, and the name has to match `NEXT_PUBLIC_SUPABASE_URL`:
+`db:reset` destroys the local data. If you've already entered real deals, restore them from
+the backup afterwards using the procedure at the end of `local-setup.md`, or skip `db:reset`
+and apply just the new migration by hand:
 
 ```
-npm run seed -- --confirm-wipe=abcdefgh.supabase.co
+npx --yes supabase@2.116.0 db push --local
 ```
 
-A local host needs `--allow-local` on top, because local is where the real pipeline lives.
-The point of naming the host rather than passing a plain `--yes` is that a copied `.env.local`
-or plain muscle memory can't satisfy it.
+The new migration is `supabase/migrations/20260903120000_contacts_and_note_edits.sql`.
 
-**Backups are now your job.** `npm run db:backup` dumps the local data to
-`backups/<timestamp>/`, git-ignored. Two files, because every row in `public` has a `user_id`
-pointing into `auth.users` and they have to be restored in that order. The restore procedure
-is in the doc.
+## What you get
 
-I've written it to fail loudly if a dump comes back suspiciously small, since a backup that
-silently produced an empty file is worse than no backup at all.
+**`/companies`**, a two-pane view. Companies on the left with a deal and contact count each;
+select one and the right pane shows its people and its deals; select a deal and its notes and
+the Analyze panel open underneath. `/deals` is untouched and still there, linked from the
+header, because the company-first view can't answer "what needs attention today".
+
+Selection lives in the URL (`/companies?company=...&deal=...`) rather than in client state.
+That keeps every pane a Server Component reading straight from Supabase, and it means a
+company you're working on is a link you can bookmark and the back button behaves.
+
+**Contacts**: name, role, email, phone, LinkedIn, attached to a company. Only the name is
+required, because a prospect usually starts as a name and a LinkedIn profile with nothing
+else. Add, edit and remove inline. The add form stays open and clears itself after each save,
+since stakeholders arrive two and three at a time.
+
+**Editable notes**, on both the new view and the existing deal page.
+
+## The decisions worth knowing about
+
+**Editing a note never moves it in the timeline.** `created_at` is untouched; a new
+`updated_at` column records the edit and the note shows "edited" beside its original date.
+This matters more than it looks: `lib/ai.ts` reasons about the *gaps between* note dates, so
+a note that jumped to today because you fixed a typo would quietly change the model's read of
+that deal's entire history. The editor says "the date stays as it was" while you're in it.
+
+**Contact links are scheme-checked before they render.** `lib/links.ts` turns email, phone and
+profile values into hrefs and returns null for anything it doesn't like, in which case the
+value renders as plain text instead of a link. This is your own house rule (AGENTS.md, HTML
+and JavaScript Security Hardening) and it's not theoretical here: contact fields are text you
+type, stored in a database, rendered back as clickable links, which is exactly the shape that
+turns a pasted `javascript:` URL into a working script link.
+
+**A React 19 rule forced a rewrite of how the forms close.** The obvious "close the editor
+when the action succeeds" is a `useEffect` that calls `setState`, which
+`react-hooks/set-state-in-effect` rejects, and your lint config treats as an error rather than
+a warning. The fix is `lib/useActionSuccess.ts`, which detects a completed action by comparing
+the state object's identity during render instead. That's the pattern React documents for this
+case. Worth reading, since it'll come up every time you add a form.
 
 ## Verified
 
-- `tsc --noEmit` clean, `eslint` clean, `next build` compiled and generated all routes.
-- **The migration was applied twice against a real Postgres 16**, with a stub `auth.users`
-  table and `auth.uid()` function standing in for Supabase's. Both passes succeeded, and the
-  result was RLS enabled on all three tables, 3 policies, 8 indexes. The second pass is the
-  one that mattered: it's what `db:reset` does and what the old file would have failed.
-- **All five paths through the seed guard were run for real:**
+- `tsc --noEmit` clean, `eslint .` clean (no warnings either), `next build` compiled and
+  generated all 10 routes including `/companies`.
+- **Both migrations applied twice in order against a real Postgres 16.** Result: RLS on all
+  four tables, 4 policies, `notes` carrying `updated_at`, `contacts` carrying all nine columns.
+  The second pass is what `db:reset` does.
+- **`lib/links.ts` was run against hostile input**, not just reasoned about:
 
-| What I ran | What happened |
+| Input | Result |
 | --- | --- |
-| `npm run seed` with no flags | refused, printed the host it would have wiped |
-| `--confirm-wipe=127.0.0.1` against a hosted URL | refused, named both hosts |
-| `--confirm-wipe=<matching hosted host>` | passed the guard, proceeded |
-| `--confirm-wipe=127.0.0.1` against a local URL | refused, asked for `--allow-local` |
-| `--confirm-wipe=127.0.0.1 --allow-local` | passed the guard, proceeded |
+| `javascript:alert(1)`, and the mixed-case and padded variants | null, renders as text |
+| `data:text/html,<script>...` | null |
+| `vbscript:msgbox(1)` | null |
+| `linkedin.com/in/nico` (no scheme) | `https://linkedin.com/in/nico` |
+| `nico@meihuizen.ai\nBcc: someone@else` (header injection) | null |
+| `+31 6 1234 5678` | `tel:+31612345678` |
 
-- **Not verified: `npm run db:start` and `npm run db:backup`.** Both need Docker, which this
-  sandbox doesn't have. The migration content is tested, the CLI invocations are not. Run
-  `npm run db:backup` once on day one and check the two files have real content in them,
-  rather than finding out the first time you need a restore.
-
-## One thing worth doing on day one
-
-Restore a backup, while the database still holds nothing you'd miss. The procedure is at the
-end of the setup doc. A backup you have never restored is a hope, not a backup.
+- **Not verified: anything that needs a browser.** No Docker in the sandbox, so the two-pane
+  layout has never been rendered, only compiled. Check it on a narrow window too: the panes
+  stack below `md` and I couldn't look at that.
 
 ## Suggested commit
 
 ```
-chore(db): add local development database and backup tooling
+feat(companies): add companies pane, contacts, and editable notes
 
-Moves the schema into supabase/migrations so the Supabase CLI can
-provision a local Postgres with the same tables, indexes and RLS
-policies as the hosted project, and makes the policy statements
-re-runnable so db:reset works more than once.
+Adds /companies, a two-pane view with companies and their contacts on
+the left and the selected company's deals and notes on the right, with
+selection held in the URL so every pane stays a Server Component.
 
-Guards scripts/seed.ts, which wipes before it writes, behind an
-explicit --confirm-wipe=<host> that must match the configured Supabase
-URL, plus --allow-local for local targets. Adds scripts/backup.ts and
-db:* npm scripts, and documents the whole setup including what still
-leaves the machine on every Analyze click.
+Adds a contacts table (name required, everything else optional) with
+inline add, edit and remove, and lib/links.ts to scheme-check email,
+phone and profile values before they are bound to an href.
 
-The hosted demo project is unchanged and stays hand-managed.
+Notes become editable on both views. created_at is deliberately left
+alone on edit so the momentum analysis, which reasons about the gaps
+between note dates, cannot be skewed by a typo fix; a new updated_at
+records the edit instead.
 ```
