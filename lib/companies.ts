@@ -149,53 +149,75 @@ export async function listDealsForCompany(
   return (data ?? []) as Deal[];
 }
 
+export interface CompanyContents {
+  deals: number;
+  contacts: number;
+  notes: number;
+}
+
 /**
- * Deletes a company only when nothing hangs off it.
+ * How much would disappear with this company. Used to spell out the blast
+ * radius on the confirm button rather than to block anything.
  *
- * `companies` cascades to deals, which cascade to notes, so an unguarded
- * delete here would take a note history with it on one click. Refusing
- * unless the company is empty makes the destructive case unreachable
- * without removing the deals first, which is a second deliberate act.
- *
- * That also matches the actual need: this exists to clean up the empty
- * company a misspelled name leaves behind, not to wipe a real account.
- *
- * The count is read here rather than trusted from the page that rendered
- * the button, because the page's numbers are from whenever it rendered and
- * the decision has to be made against the database as it is now.
+ * Notes are counted through their deals, since notes hang off deals and
+ * deals hang off the company. Two cascade hops is exactly why the number
+ * is worth showing: nothing on screen otherwise says that removing a
+ * company takes a note history with it.
  */
-export async function deleteCompanyIfEmpty(
+export async function countCompanyContents(
   supabase: SupabaseClient,
   companyId: string,
-): Promise<void> {
-  const { count: dealCount, error: dealError } = await supabase
-    .from("deals")
-    .select("id", { count: "exact", head: true })
-    .eq("company_id", companyId);
-
-  if (dealError) {
-    throw new Error(`Failed to check for deals: ${dealError.message}`);
-  }
-
-  if ((dealCount ?? 0) > 0) {
-    throw new Error(
-      "This company still has deals. Remove those first, so their notes don't disappear with it.",
-    );
-  }
-
+  dealIds: string[],
+): Promise<CompanyContents> {
   const { count: contactCount, error: contactError } = await supabase
     .from("contacts")
     .select("id", { count: "exact", head: true })
     .eq("company_id", companyId);
 
   if (contactError) {
-    throw new Error(`Failed to check for contacts: ${contactError.message}`);
+    throw new Error(`Failed to count contacts: ${contactError.message}`);
   }
 
-  if ((contactCount ?? 0) > 0) {
-    throw new Error("This company still has contacts. Remove those first.");
+  let noteCount = 0;
+
+  if (dealIds.length > 0) {
+    const { count, error } = await supabase
+      .from("notes")
+      .select("id", { count: "exact", head: true })
+      .in("deal_id", dealIds);
+
+    if (error) {
+      throw new Error(`Failed to count notes: ${error.message}`);
+    }
+
+    noteCount = count ?? 0;
   }
 
+  return {
+    deals: dealIds.length,
+    contacts: contactCount ?? 0,
+    notes: noteCount,
+  };
+}
+
+/**
+ * Deletes a company, and by the cascades on `deals.company_id` and
+ * `notes.deal_id`, its deals and their notes with it.
+ *
+ * An earlier version refused unless the company was empty. That was the
+ * wrong call: it is his data, on his machine, backed up, and being told
+ * "delete these three things first" by your own tool is a tool arguing
+ * with you. The protection that stays is the one that informs rather than
+ * forbids - the confirm button names exactly what is about to go, and it
+ * still takes two clicks.
+ *
+ * Callers must check destructiveActionsEnabled() first. This is the
+ * mechanism, not the policy.
+ */
+export async function deleteCompany(
+  supabase: SupabaseClient,
+  companyId: string,
+): Promise<void> {
   const { error } = await supabase
     .from("companies")
     .delete()

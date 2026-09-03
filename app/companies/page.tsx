@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import {
+  countCompanyContents,
   getCompanyById,
   listCompaniesForUser,
   listDealsForCompany,
+  type CompanyContents,
 } from "@/lib/companies";
 import { listContactsForCompany } from "@/lib/contacts";
 import { listNotesForDeal } from "@/lib/notes";
@@ -39,6 +41,32 @@ import TerminalShell from "@/components/TerminalShell";
 // "what needs attention today", a question this company-first view cannot
 // answer by design.
 
+/**
+ * Spells out what a company delete takes with it, for the confirm button.
+ * Reads as "remove company + 3 contacts, 1 deal, 12 notes?" so the two
+ * cascade hops are visible at the moment of deciding, rather than
+ * discovered afterwards. An empty company just says "remove company?".
+ */
+function describeCompanyContents(contents: CompanyContents): string {
+  const parts: string[] = [];
+  const plural = (count: number, word: string) =>
+    `${count} ${word}${count === 1 ? "" : "s"}`;
+
+  if (contents.contacts > 0) {
+    parts.push(plural(contents.contacts, "contact"));
+  }
+
+  if (contents.deals > 0) {
+    parts.push(plural(contents.deals, "deal"));
+  }
+
+  if (contents.notes > 0) {
+    parts.push(plural(contents.notes, "note"));
+  }
+
+  return parts.length === 0 ? "company" : `company + ${parts.join(", ")}`;
+}
+
 interface CompaniesPageProps {
   searchParams: Promise<{ company?: string; deal?: string }>;
 }
@@ -72,6 +100,18 @@ export default async function CompaniesPage({
   const deals = selectedCompany
     ? await listDealsForCompany(supabase, selectedCompany.id)
     : [];
+
+  // Only counted when the remove control is going to be drawn. Nobody
+  // needs three extra queries per page load to render a button that isn't
+  // there.
+  const companyContents: CompanyContents | null =
+    selectedCompany && canDelete
+      ? await countCompanyContents(
+          supabase,
+          selectedCompany.id,
+          deals.map((deal) => deal.id),
+        )
+      : null;
 
   const selectedDeal =
     dealId && selectedCompany ? await getDealById(supabase, dealId) : null;
@@ -159,19 +199,17 @@ export default async function CompaniesPage({
                 <h2 className="font-display text-xl font-semibold text-foreground">
                   {selectedCompany.name}
                 </h2>
-                {/* Only offered on an empty company. Deleting one with
-                    deals would cascade through their notes, and this
-                    exists to clear up the leftover a misspelled name
-                    creates, not to wipe an account. */}
-                {canDelete &&
-                  deals.length === 0 &&
-                  contacts.length === 0 && (
-                    <ConfirmDeleteButton
-                      action={deleteCompanyAction}
-                      hiddenFields={{ companyId: selectedCompany.id }}
-                      label="remove company"
-                    />
-                  )}
+                {/* The confirm names what goes with it. Removing a
+                    company cascades to its deals and through them to
+                    their notes, and nothing else on screen says so. */}
+                {canDelete && companyContents && (
+                  <ConfirmDeleteButton
+                    action={deleteCompanyAction}
+                    hiddenFields={{ companyId: selectedCompany.id }}
+                    label="remove company"
+                    confirmLabel={`remove ${describeCompanyContents(companyContents)}?`}
+                  />
+                )}
               </div>
               <ContactList companyId={selectedCompany.id} contacts={contacts} />
             </>

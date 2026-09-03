@@ -225,18 +225,19 @@ export default function ContactList({
   contacts: Contact[];
 }) {
   const [isAdding, setIsAdding] = useState(false);
-  const [formGeneration, setFormGeneration] = useState(0);
   const [state, formAction, isPending] = useActionState(
     createContactAction.bind(null, companyId),
     initialState,
   );
 
-  // A saved contact bumps the generation, which remounts the form with
-  // empty fields and leaves it open. Stakeholders arrive in twos and
-  // threes, so the useful default after adding one person is a blank form,
-  // not a closed one.
+  // Closes on success. An earlier version kept the form open and cleared
+  // it, on the theory that stakeholders arrive in twos and threes. In
+  // practice that left five empty inputs sitting above the actual contact
+  // list for the rest of the session, which is the first thing you see
+  // when you pick a company. Adding a second person is one more click on
+  // "+ add"; reading the list is what this pane is for.
   if (useActionSuccess(state)) {
-    setFormGeneration((generation) => generation + 1);
+    setIsAdding(false);
   }
 
   return (
@@ -257,7 +258,6 @@ export default function ContactList({
       {isAdding && (
         <div className="mt-3 rounded border border-accent-dim px-3 py-3">
           <ContactFields
-            key={formGeneration}
             formAction={formAction}
             state={state}
             isPending={isPending}

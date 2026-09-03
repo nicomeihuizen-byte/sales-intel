@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase";
-import { createCompany, deleteCompanyIfEmpty } from "@/lib/companies";
+import { createCompany, deleteCompany } from "@/lib/companies";
 import { createDealForCompany, deleteDeal } from "@/lib/deals";
 import { destructiveActionsEnabled } from "@/lib/featureFlags";
 import {
@@ -302,7 +302,7 @@ export async function deleteCompanyAction(
   const supabase = await createServerSupabaseClient();
 
   try {
-    await deleteCompanyIfEmpty(supabase, companyId);
+    await deleteCompany(supabase, companyId);
   } catch (error) {
     return {
       error:
