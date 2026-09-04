@@ -9,6 +9,13 @@ import type {
   Note,
   WinPattern,
 } from "./types";
+import { DRAFT_LANGUAGES, type DraftLanguage } from "./draftLanguages";
+
+export {
+  DRAFT_LANGUAGES,
+  isDraftLanguage,
+  type DraftLanguage,
+} from "./draftLanguages";
 
 // The only module allowed to read ANTHROPIC_API_KEY (see AGENTS.md - API &
 // Secrets Handling). Only ever imported from app/api/insight/route.ts, a
@@ -717,6 +724,7 @@ export interface EmailDraftContext {
   dealTitle: string;
   dealStatus: DealStatus;
   senderName: string;
+  language: DraftLanguage;
 }
 
 function buildEmailDraftPrompt(
@@ -745,7 +753,7 @@ ${formatNoteHistory(notes)}
 
 Ground the email in that history. Refer to something specific that actually happened: a document, a date, a question they asked, a commitment either side made. A reader should be able to tell it was written about this deal and no other.
 
-Write it in English, whatever language the notes are in. Keep it to about 120 words, three short paragraphs at most, with a clear ask at the end. No subject-line clichés, no "I hope this email finds you well", no summarising the whole history back at them. Write the way a experienced salesperson writes to someone they already know: direct, warm, and short.
+Write it in ${DRAFT_LANGUAGES[context.language]}, whatever language the notes are in. Keep it to about 120 words, three short paragraphs at most, with a clear ask at the end. No subject-line clichés, no "I hope this email finds you well", no summarising the whole history back at them. Write the way a experienced salesperson writes to someone they already know: direct, warm, and short.
 
 Sign off as ${context.senderName}. Do not invent facts that are not in the notes: no prices, no dates, no names, no commitments that were never made. If the history is too thin to say anything specific, write a genuinely short note asking the one question that would unblock things.
 
@@ -758,9 +766,10 @@ Call ${EMAIL_DRAFT_TOOL_NAME} with the subject line and the body.`;
  * Drafts a follow-up email to one contact, grounded in the deal's note
  * history and shaped by its status.
  *
- * Always English by explicit instruction, even when the notes are Dutch or
- * German, because that is what was asked for and a model reading Dutch
- * notes will otherwise answer in Dutch.
+ * The language is chosen by the caller and stated explicitly in the
+ * prompt, because a model reading Dutch notes will otherwise answer in
+ * Dutch regardless of who the email is going to. The notes stay in
+ * whatever language they were written in; only the draft is translated.
  *
  * The output is a draft to copy, never something sent: nothing in this
  * app talks to a mail server, and the UI hands the text over rather than
@@ -789,7 +798,7 @@ export async function draftContactEmail(
         body: {
           type: "string",
           description:
-            "The email body in English, about 120 words, ending in a clear ask, signed off by the sender.",
+            "The email body in the requested language, about 120 words, ending in a clear ask, signed off by the sender.",
         },
       },
       required: ["subject", "body"],

@@ -9,21 +9,22 @@ import {
   type CompanyContents,
 } from "@/lib/companies";
 import { listContactsForCompany } from "@/lib/contacts";
-import { listNotesForDeal } from "@/lib/notes";
-import { getDealById } from "@/lib/deals";
+import {
+  countNotesByContact,
+  listNotesForContact,
+  listNotesForDeal,
+} from "@/lib/notes";
 import { computePipelineMetrics } from "@/lib/metrics";
+import { listDealInsights } from "@/lib/insights";
 import { signOut } from "@/app/login/actions";
-import { deleteCompanyAction, deleteDealAction } from "@/app/companies/actions";
+import { deleteCompanyAction } from "@/app/companies/actions";
 import { destructiveActionsEnabled } from "@/lib/featureFlags";
 import ContactList from "@/components/ContactList";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
-import DealStatusPicker from "@/components/DealStatusPicker";
-import DealValueField from "@/components/DealValueField";
+import AnalyzeDealsButton from "@/components/AnalyzeDealsButton";
+import DealBoard from "@/components/DealBoard";
 import NewDealInCompanyForm from "@/components/NewDealInCompanyForm";
 import NewCompanyForm from "@/components/NewCompanyForm";
-import NoteList from "@/components/NoteList";
-import NoteForm from "@/components/NoteForm";
-import InsightPanel from "@/components/InsightPanel";
 import PipelineMeters from "@/components/PipelineMeters";
 import TerminalShell from "@/components/TerminalShell";
 
@@ -31,15 +32,14 @@ import TerminalShell from "@/components/TerminalShell";
 // company's people, its deals), a preview of the selected deal underneath,
 // with the pipeline strip across the top above them.
 //
-// Selection lives in the URL (?company=...&deal=...) rather than in client
-// state, which keeps every pane a Server Component reading straight from
-// Supabase. It also means a company or deal you are working on is a link
-// you can bookmark, and the back button does what you expect.
-
-// How many recent notes appear in the preview under the deals pane. The
-// full timeline is still below, so this is a reminder of where things
-// stand, not a replacement for reading them.
-const PREVIEW_NOTES = 2;
+// The selected company lives in the URL (?company=...), which keeps every
+// pane a Server Component reading straight from Supabase and makes the
+// company you are working on a link you can bookmark.
+//
+// A deal is NOT in the URL: it opens as an overlay over the three panes
+// rather than as a fourth region that pushes them around. That is the
+// difference between a control centre and a page that reflows every time
+// you look at something.
 
 /**
  * Spells out what a company delete takes with it, for the confirm button.
@@ -68,13 +68,13 @@ function describeCompanyContents(contents: CompanyContents): string {
 }
 
 interface CompaniesPageProps {
-  searchParams: Promise<{ company?: string; deal?: string }>;
+  searchParams: Promise<{ company?: string }>;
 }
 
 export default async function CompaniesPage({
   searchParams,
 }: CompaniesPageProps) {
-  const { company: companyId, deal: dealId } = await searchParams;
+  const { company: companyId } = await searchParams;
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -114,20 +114,41 @@ export default async function CompaniesPage({
         )
       : null;
 
-  const selectedDeal =
-    dealId && selectedCompany ? await getDealById(supabase, dealId) : null;
+  // Everything the three panes need, gathered here so the panes stay
+  // presentational and nothing fetches from inside a render.
+  const contactNoteCounts = await countNotesByContact(
+    supabase,
+    contacts.map((contact) => contact.id),
+  );
 
-  // Guard against a deal id from a different company than the one
-  // selected, which is what a hand-edited URL or a stale link produces.
-  const dealBelongsHere =
-    selectedDeal && selectedDeal.company_id === selectedCompany?.id;
-  const notes = dealBelongsHere
-    ? await listNotesForDeal(supabase, selectedDeal.id)
-    : [];
-  const recentNotes = notes.slice(-PREVIEW_NOTES).reverse();
+  const contactNoteLists = await Promise.all(
+    contacts.map(async (contact) => [
+      contact.id,
+      await listNotesForContact(supabase, contact.id),
+    ] as const),
+  );
+  const notesByContact = Object.fromEntries(contactNoteLists);
+
+  const dealNoteLists = await Promise.all(
+    deals.map(async (deal) => [
+      deal.id,
+      await listNotesForDeal(supabase, deal.id),
+    ] as const),
+  );
+  const notesByDeal = Object.fromEntries(dealNoteLists);
+
+  // The stored verdicts, so each deal row can show the last thing the
+  // analysis said without this page making a single model call.
+  const insights = deals.length > 0 ? await listDealInsights(supabase) : [];
+  const insightsByDeal = Object.fromEntries(
+    insights
+      .filter((insight) => insight.deal_id in notesByDeal)
+      .map((insight) => [insight.deal_id, insight]),
+  );
+
 
   return (
-    <TerminalShell label="~/deals" maxWidthClassName="max-w-7xl">
+    <TerminalShell label="~/deals" maxWidthClassName="max-w-[1800px]">
       <div className="flex items-start justify-between gap-6">
         <div>
           <h1 className="font-display text-2xl font-semibold text-accent">
@@ -233,7 +254,9 @@ export default async function CompaniesPage({
               <ContactList
                 companyId={selectedCompany.id}
                 contacts={contacts}
-                dealId={dealBelongsHere ? selectedDeal.id : null}
+                dealId={deals[0]?.id ?? null}
+                notesByContact={notesByContact}
+                noteCountsByContact={contactNoteCounts}
               />
             </>
           )}
@@ -242,121 +265,29 @@ export default async function CompaniesPage({
         <section className="min-w-0">
           {selectedCompany && (
             <>
-              <h2 className="font-mono text-sm text-accent2">{"// deals"}</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="font-mono text-sm text-accent2">{"// deals"}</h2>
+                <AnalyzeDealsButton companyId={selectedCompany.id} />
+              </div>
 
-              {deals.length === 0 && (
+              {deals.length === 0 ? (
                 <p className="mt-3 text-sm text-muted">
                   No deals for this company yet.
                 </p>
+              ) : (
+                <DealBoard
+                  deals={deals}
+                  insightsByDeal={insightsByDeal}
+                  notesByDeal={notesByDeal}
+                  canDelete={canDelete}
+                />
               )}
-
-              <ul className="mt-3 flex flex-col gap-2">
-                {deals.map((deal) => {
-                  const isSelected = deal.id === selectedDeal?.id;
-
-                  return (
-                    <li
-                      key={deal.id}
-                      className={`flex items-center gap-2 rounded border px-3 py-2.5 transition-colors ${
-                        isSelected
-                          ? "border-accent-dim bg-background"
-                          : "border-line hover:border-accent-dim"
-                      }`}
-                    >
-                      {/* The link and the controls are siblings, not
-                          nested: a select or a button inside an anchor is
-                          invalid HTML and the two fight over the click. */}
-                      <Link
-                        href={`/companies?company=${selectedCompany.id}&deal=${deal.id}`}
-                        aria-current={isSelected ? "true" : undefined}
-                        className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
-                      >
-                        {deal.title}
-                      </Link>
-                      <DealValueField
-                        dealId={deal.id}
-                        valueEur={deal.value_eur}
-                      />
-                      <DealStatusPicker dealId={deal.id} status={deal.status} />
-                      {canDelete && (
-                        <ConfirmDeleteButton
-                          action={deleteDealAction}
-                          hiddenFields={{ dealId: deal.id }}
-                          confirmLabel="remove + notes?"
-                        />
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
 
               <NewDealInCompanyForm companyId={selectedCompany.id} />
-
-              {/* The last couple of notes, so selecting a deal tells you
-                  where it stands without scrolling to the timeline. */}
-              {dealBelongsHere && selectedDeal && (
-                <div className="mt-6 border-t border-line pt-4">
-                  <h3 className="font-mono text-xs uppercase tracking-wide text-dim">
-                    Latest on {selectedDeal.title}
-                  </h3>
-                  {recentNotes.length === 0 ? (
-                    <p className="mt-2 text-sm text-muted">
-                      No notes on this deal yet.
-                    </p>
-                  ) : (
-                    <ul className="mt-2 flex flex-col gap-2">
-                      {recentNotes.map((note) => (
-                        <li key={note.id} className="text-xs">
-                          <p className="font-mono text-[11px] text-dim">
-                            {new Date(note.created_at).toLocaleDateString()}
-                          </p>
-                          <p className="mt-0.5 line-clamp-3 text-foreground">
-                            {note.content}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
             </>
           )}
         </section>
       </div>
-
-      {dealBelongsHere && selectedDeal && (
-        <section className="mt-10 border-t border-line pt-6">
-          <div className="flex items-center justify-between">
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-semibold text-foreground">
-                {selectedDeal.title}
-              </h2>
-              <p className="mt-0.5 font-mono text-xs text-dim">
-                {selectedDeal.company_name}
-              </p>
-            </div>
-            <Link
-              href={`/deals/${selectedDeal.id}`}
-              className="shrink-0 font-mono text-xs text-dim hover:text-accent"
-            >
-              open full page
-            </Link>
-          </div>
-
-          <InsightPanel
-            dealId={selectedDeal.id}
-            dealStatus={selectedDeal.status}
-          />
-
-          <NoteForm dealId={selectedDeal.id} />
-
-          <h3 className="mt-8 font-mono text-sm text-accent2">{"// notes"}</h3>
-          <NoteList notes={notes} />
-        </section>
-      )}
-
-      {/* Padding so the fixed panel never covers the last note. */}
-      <div className="h-40" aria-hidden="true" />
     </TerminalShell>
   );
 }

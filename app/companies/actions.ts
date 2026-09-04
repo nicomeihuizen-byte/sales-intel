@@ -2,13 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase";
-import { createCompany, deleteCompany } from "@/lib/companies";
-import { listNotesForDeal } from "@/lib/notes";
+import {
+  createCompany,
+  deleteCompany,
+  listDealsForCompany,
+} from "@/lib/companies";
+import { createNote, listNotesForDeal } from "@/lib/notes";
 import {
   analyzeDealMomentum,
   draftContactEmail,
   type ContactEmailDraft,
 } from "@/lib/ai";
+import { isDraftLanguage, type DraftLanguage } from "@/lib/draftLanguages";
 import { recordDealInsight } from "@/lib/insights";
 import {
   createDealForCompany,
@@ -451,6 +456,9 @@ export async function refreshPipelineAction(
 export interface EmailDraftState {
   error: string | null;
   draft: ContactEmailDraft | null;
+  // Echoed back so the language picker keeps the choice across a re-draft
+  // instead of snapping to English every time the panel re-renders.
+  language: DraftLanguage;
 }
 
 /**
@@ -469,7 +477,16 @@ export async function draftEmailAction(
   contactId: string,
   dealId: string | null,
   previousState: EmailDraftState,
+  formData: FormData,
 ): Promise<EmailDraftState> {
+  const requested = formData.get("language");
+  // Unknown values fall back to English rather than erroring. The value
+  // reaches a prompt, so isDraftLanguage is the gate: nothing outside the
+  // known set can be interpolated into it.
+  const language: DraftLanguage = isDraftLanguage(requested)
+    ? requested
+    : previousState.language;
+
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -479,7 +496,11 @@ export async function draftEmailAction(
   // another" and getting an error should not also take away the perfectly
   // good text you were about to copy.
   if (!user) {
-    return { ...previousState, error: "You must be signed in to do that." };
+    return {
+      ...previousState,
+      language,
+      error: "You must be signed in to do that.",
+    };
   }
 
   try {
@@ -543,14 +564,16 @@ export async function draftEmailAction(
         dealTitle: deal.title,
         dealStatus: deal.status,
         senderName: senderNameFromEmail(user.email),
+        language,
       },
       notes,
     );
 
-    return { error: null, draft };
+    return { error: null, draft, language };
   } catch (error) {
     return {
       draft: previousState.draft,
+      language,
       error:
         error instanceof Error ? error.message : "Failed to draft an email.",
     };
@@ -574,4 +597,173 @@ function senderNameFromEmail(email: string | undefined): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+/**
+ * Records a note against a contact, with no deal attached.
+ *
+ * The gap this fills: a person you have talked to before there is a deal
+ * had nowhere to put what was said. Such a note is deliberately invisible
+ * to the momentum analysis, which only reads notes carrying a deal_id, so
+ * logging a chat with someone cannot move a deal's health score.
+ */
+export async function createContactNoteAction(
+  contactId: string,
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const content = formData.get("content");
+
+  if (typeof content !== "string") {
+    return { error: "A note needs some text." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    await createNote(supabase, userId, { contactId, content });
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to add note.",
+    };
+  }
+
+  revalidatePath("/companies");
+  return { error: null };
+}
+
+/**
+ * Files a drafted email into the history as a sent email.
+ *
+ * The app never sends anything, so it cannot know an email went out. This
+ * is the honest trigger: you press it after sending, and it records what
+ * you actually sent rather than what was generated, because the subject
+ * and body come from the (editable) boxes on screen.
+ *
+ * Attached to the contact and, when a deal is selected, to the deal as
+ * well. That second attachment is the point: an email you sent and never
+ * logged makes a live deal look silent to the momentum analysis.
+ */
+export async function logSentEmailAction(
+  contactId: string,
+  dealId: string | null,
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const subject = formData.get("subject");
+  const body = formData.get("body");
+
+  if (typeof subject !== "string" || typeof body !== "string") {
+    return { error: "Nothing to log." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const content = `Sent: ${subject.trim()}\n\n${body.trim()}`;
+
+  try {
+    await createNote(supabase, userId, {
+      contactId,
+      dealId,
+      content,
+      kind: "email",
+    });
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to log the email.",
+    };
+  }
+
+  revalidatePath("/companies");
+
+  if (dealId) {
+    revalidatePath(`/deals/${dealId}`);
+  }
+
+  return { error: null };
+}
+
+/**
+ * Re-runs the momentum analysis for every open deal at one company.
+ *
+ * The pipeline strip's refresh does this across the whole pipeline, which
+ * is the right scope when you are reading the numbers at the top. This is
+ * the right scope when you are looking at one company: it costs a handful
+ * of model calls instead of all of them, and it answers the question you
+ * actually have, which is about the company in front of you.
+ *
+ * Failures are counted rather than thrown. One deal the model chokes on
+ * should not cost you the other four.
+ */
+export async function analyzeCompanyDealsAction(
+  companyId: string,
+  previousState: RefreshState,
+): Promise<RefreshState> {
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { ...previousState, error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  let openDeals;
+
+  try {
+    const deals = await listDealsForCompany(supabase, companyId);
+    openDeals = deals
+      .filter((deal) => deal.status === "open")
+      .slice(0, MAX_DEALS_PER_REFRESH);
+  } catch (error) {
+    return {
+      ...previousState,
+      error: error instanceof Error ? error.message : "Failed to load deals.",
+    };
+  }
+
+  if (openDeals.length === 0) {
+    return { error: "No open deals here to analyse.", analyzed: 0, failed: 0 };
+  }
+
+  let analyzed = 0;
+  let failed = 0;
+
+  for (const deal of openDeals) {
+    try {
+      const notes = await listNotesForDeal(supabase, deal.id);
+      const insight = await analyzeDealMomentum(deal.title, notes);
+      await recordDealInsight(
+        supabase,
+        userId,
+        deal.id,
+        insight.status,
+        insight.reasoning,
+      );
+      analyzed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  revalidatePath("/companies");
+
+  return {
+    error:
+      failed > 0
+        ? `${failed} deal${failed === 1 ? "" : "s"} could not be analysed. Open one and press Analyze to see why.`
+        : null,
+    analyzed,
+    failed,
+  };
 }

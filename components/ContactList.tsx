@@ -3,18 +3,25 @@
 import { useActionState, useState } from "react";
 import {
   createContactAction,
+  createContactNoteAction,
   deleteContactAction,
   draftEmailAction,
+  logSentEmailAction,
   updateContactAction,
   type EmailDraftState,
   type FormState,
 } from "@/app/companies/actions";
+import { DRAFT_LANGUAGES } from "@/lib/draftLanguages";
 import { mailtoHref, profileHref, telHref } from "@/lib/links";
 import { useActionSuccess } from "@/lib/useActionSuccess";
-import type { Contact } from "@/lib/types";
+import type { Contact, Note } from "@/lib/types";
 
 const initialState: FormState = { error: null };
-const initialDraftState: EmailDraftState = { error: null, draft: null };
+const initialDraftState: EmailDraftState = {
+  error: null,
+  draft: null,
+  language: "en",
+};
 
 const TEXT_FIELDS = [
   { name: "name", label: "Name", type: "text", required: true },
@@ -208,6 +215,33 @@ function ContactDetails({ contact }: { contact: Contact }) {
 }
 
 /**
+ * The language picker for a draft. Its own component only because it
+ * appears twice, once on the empty panel and once beside "write another",
+ * and the two must stay in step.
+ */
+function LanguageSelect({ id, value }: { id: string; value: string }) {
+  return (
+    <>
+      <label className="sr-only" htmlFor={id}>
+        Draft language
+      </label>
+      <select
+        id={id}
+        name="language"
+        defaultValue={value}
+        className="rounded border border-line bg-background px-2 py-1 font-mono text-xs text-muted outline-none focus:border-accent"
+      >
+        {Object.entries(DRAFT_LANGUAGES).map(([code, label]) => (
+          <option key={code} value={code} className="text-foreground">
+            {label}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
+/**
  * The drafted email, shown in a panel under the contact.
  *
  * Copy only, by design. Nothing here sends anything, and the subject and
@@ -228,7 +262,18 @@ function EmailDraftPanel({
     draftEmailAction.bind(null, contact.id, dealId),
     initialDraftState,
   );
+  const [logState, logAction, isLogging] = useActionState(
+    logSentEmailAction.bind(null, contact.id, dealId),
+    initialState,
+  );
   const [copied, setCopied] = useState<string | null>(null);
+  // Sticky rather than the single render useActionSuccess returns: the
+  // confirmation should stay while you are still looking at the draft.
+  const [hasLogged, setHasLogged] = useState(false);
+
+  if (useActionSuccess(logState)) {
+    setHasLogged(true);
+  }
 
   async function copy(label: string, text: string) {
     try {
@@ -258,7 +303,8 @@ function EmailDraftPanel({
       </div>
 
       {!state.draft && (
-        <form action={draftAction} className="mt-2">
+        <form action={draftAction} className="mt-2 flex items-center gap-2">
+          <LanguageSelect id={`lang-${contact.id}`} value={state.language} />
           <button
             type="submit"
             disabled={isDrafting}
@@ -266,9 +312,6 @@ function EmailDraftPanel({
           >
             {isDrafting ? "Writing..." : "Write a draft"}
           </button>
-          <p className="mt-2 font-mono text-[11px] text-dim">
-            English, based on this deal&apos;s notes and status.
-          </p>
         </form>
       )}
 
@@ -316,16 +359,167 @@ function EmailDraftPanel({
             </p>
           </div>
 
-          <form action={draftAction}>
+          <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
+            <form action={draftAction} className="flex items-center gap-2">
+              <LanguageSelect
+                id={`lang-again-${contact.id}`}
+                value={state.language}
+              />
+              <button
+                type="submit"
+                disabled={isDrafting}
+                className="font-mono text-xs text-dim transition-colors hover:text-accent disabled:opacity-50"
+              >
+                {isDrafting ? "writing..." : "write another"}
+              </button>
+            </form>
+
+            <form action={logAction} className="ml-auto">
+              <input
+                type="hidden"
+                name="subject"
+                value={state.draft.subject}
+              />
+              <input type="hidden" name="body" value={state.draft.body} />
+              <button
+                type="submit"
+                disabled={isLogging}
+                className="font-mono text-xs text-accent2 transition-opacity hover:opacity-80 disabled:opacity-50"
+                title="Records this in the history as an email you sent"
+              >
+                {isLogging ? "logging..." : "i sent this"}
+              </button>
+            </form>
+          </div>
+
+          {logState.error && (
+            <p role="alert" className="text-xs text-red-400">
+              {logState.error}
+            </p>
+          )}
+          {!logState.error && hasLogged && (
+            <p className="font-mono text-[11px] text-dim">
+              Logged against {dealId ? "this contact and the deal" : "this contact"}.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Notes attached to one person, with no deal involved.
+ *
+ * Deliberately not a third pane: only four section labels exist on this
+ * screen and a person's notes belong to that person, not beside them. The
+ * list stays collapsed behind a count, because most contacts have none and
+ * a permanently open empty list is noise in a column you scan.
+ *
+ * These notes never reach the momentum analysis, which reads only notes
+ * carrying a deal_id. Talking to someone you have no deal with should not
+ * be able to move a deal's health score.
+ */
+function ContactNotes({
+  contact,
+  notes,
+  noteCount,
+}: {
+  contact: Contact;
+  notes: Note[];
+  noteCount: number;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [state, formAction, isPending] = useActionState(
+    createContactNoteAction.bind(null, contact.id),
+    initialState,
+  );
+
+  if (useActionSuccess(state)) {
+    setIsAdding(false);
+  }
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setIsOpen((open) => !open)}
+          className="font-mono text-xs text-dim transition-colors hover:text-accent"
+        >
+          {noteCount === 0
+            ? "no notes"
+            : `${noteCount} note${noteCount === 1 ? "" : "s"}`}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setIsAdding(true);
+            setIsOpen(true);
+          }}
+          className="font-mono text-xs text-dim transition-colors hover:text-accent"
+        >
+          + note
+        </button>
+      </div>
+
+      {isAdding && (
+        <form action={formAction} className="mt-2 flex flex-col gap-2">
+          <label className="sr-only" htmlFor={`contact-note-${contact.id}`}>
+            Note about {contact.name}
+          </label>
+          <textarea
+            id={`contact-note-${contact.id}`}
+            name="content"
+            required
+            rows={3}
+            autoFocus
+            placeholder={`What was said with ${contact.name}?`}
+            className="rounded border border-line bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent"
+          />
+          {state.error && (
+            <p role="alert" className="text-xs text-red-400">
+              {state.error}
+            </p>
+          )}
+          <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={isDrafting}
-              className="font-mono text-xs text-dim transition-colors hover:text-accent disabled:opacity-50"
+              disabled={isPending}
+              className="rounded bg-accent px-3 py-1 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {isDrafting ? "writing..." : "write another"}
+              {isPending ? "Saving..." : "Save"}
             </button>
-          </form>
-        </div>
+            <button
+              type="button"
+              onClick={() => setIsAdding(false)}
+              className="font-mono text-xs text-muted hover:text-accent"
+            >
+              cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {isOpen && notes.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-2">
+          {notes.map((note) => (
+            <li
+              key={note.id}
+              className="rounded border border-line bg-background/40 px-2 py-1.5"
+            >
+              <p className="whitespace-pre-wrap text-xs text-foreground">
+                {note.content}
+              </p>
+              <p className="mt-1 font-mono text-[11px] text-dim">
+                {new Date(note.created_at).toLocaleDateString()}
+                {note.kind === "email" ? " · email" : ""}
+                {note.deal_id ? " · on a deal" : ""}
+              </p>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -334,9 +528,13 @@ function EmailDraftPanel({
 function ContactRow({
   contact,
   dealId,
+  notes,
+  noteCount,
 }: {
   contact: Contact;
   dealId: string | null;
+  notes: Note[];
+  noteCount: number;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isDrafting, setIsDrafting] = useState(false);
@@ -399,6 +597,12 @@ function ContactRow({
             </form>
           </div>
 
+          <ContactNotes
+            contact={contact}
+            notes={notes}
+            noteCount={noteCount}
+          />
+
           {isDrafting && (
             <EmailDraftPanel
               contact={contact}
@@ -420,10 +624,14 @@ export default function ContactList({
   companyId,
   contacts,
   dealId,
+  notesByContact,
+  noteCountsByContact,
 }: {
   companyId: string;
   contacts: Contact[];
   dealId: string | null;
+  notesByContact: Record<string, Note[]>;
+  noteCountsByContact: Record<string, number>;
 }) {
   const [isAdding, setIsAdding] = useState(false);
   const [state, formAction, isPending] = useActionState(
@@ -469,7 +677,13 @@ export default function ContactList({
       {contacts.length > 0 && (
         <ul className="mt-3 flex flex-col gap-2">
           {contacts.map((contact) => (
-            <ContactRow key={contact.id} contact={contact} dealId={dealId} />
+            <ContactRow
+              key={contact.id}
+              contact={contact}
+              dealId={dealId}
+              notes={notesByContact[contact.id] ?? []}
+              noteCount={noteCountsByContact[contact.id] ?? 0}
+            />
           ))}
         </ul>
       )}

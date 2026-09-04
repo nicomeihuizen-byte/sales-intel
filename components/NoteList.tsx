@@ -88,6 +88,9 @@ function NoteRow({ note }: { note: Note }) {
       </p>
       <div className="mt-1 flex items-center gap-3">
         <p className="text-xs text-dim">
+          {note.kind === "email" && (
+            <span className="text-accent2">{"email · "}</span>
+          )}
           {new Date(note.created_at).toLocaleString()}
           {wasEdited(note) && (
             <span title={`Edited ${new Date(note.updated_at).toLocaleString()}`}>

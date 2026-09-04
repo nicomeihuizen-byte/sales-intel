@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Note } from "./types";
+import type { Note, NoteKind } from "./types";
 
-const NOTE_COLUMNS = "id, deal_id, user_id, content, created_at, updated_at";
+const NOTE_COLUMNS =
+  "id, deal_id, contact_id, kind, user_id, content, created_at, updated_at";
 
 // Data-access layer for notes (Phase 4). See lib/deals.ts for why this
 // lives here instead of inline in the route handlers and page components.
@@ -30,8 +31,10 @@ export async function listNotesForDeal(
 }
 
 export interface CreateNoteInput {
-  dealId: string;
+  dealId?: string | null;
+  contactId?: string | null;
   content: string;
+  kind?: NoteKind;
 }
 
 /**
@@ -51,9 +54,22 @@ export async function createNote(
     throw new Error("Note content is required.");
   }
 
+  const dealId = input.dealId ?? null;
+  const contactId = input.contactId ?? null;
+
+  if (!dealId && !contactId) {
+    throw new Error("A note has to belong to a deal or a contact.");
+  }
+
   const { data, error } = await supabase
     .from("notes")
-    .insert({ user_id: userId, deal_id: input.dealId, content })
+    .insert({
+      user_id: userId,
+      deal_id: dealId,
+      contact_id: contactId,
+      kind: input.kind ?? "note",
+      content,
+    })
     .select(NOTE_COLUMNS)
     .single();
 
@@ -131,4 +147,59 @@ export async function getNoteDealId(
   }
 
   return (data as { deal_id: string } | null)?.deal_id ?? null;
+}
+
+/**
+ * Every note attached to one contact, oldest first. Includes notes that
+ * are also attached to a deal, because from the person's side "what have
+ * I said to Priya" does not care which deal it was about.
+ */
+export async function listNotesForContact(
+  supabase: SupabaseClient,
+  contactId: string,
+): Promise<Note[]> {
+  const { data, error } = await supabase
+    .from("notes")
+    .select(NOTE_COLUMNS)
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to load contact notes: ${error.message}`);
+  }
+
+  return (data ?? []) as Note[];
+}
+
+/**
+ * How many notes each of these contacts has, as a map keyed by contact id.
+ * One query for the whole pane rather than one per contact, since the
+ * contact list renders every person at a company at once.
+ */
+export async function countNotesByContact(
+  supabase: SupabaseClient,
+  contactIds: string[],
+): Promise<Record<string, number>> {
+  if (contactIds.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from("notes")
+    .select("contact_id")
+    .in("contact_id", contactIds);
+
+  if (error) {
+    throw new Error(`Failed to count contact notes: ${error.message}`);
+  }
+
+  const counts: Record<string, number> = {};
+
+  for (const row of (data ?? []) as { contact_id: string | null }[]) {
+    if (row.contact_id) {
+      counts[row.contact_id] = (counts[row.contact_id] ?? 0) + 1;
+    }
+  }
+
+  return counts;
 }

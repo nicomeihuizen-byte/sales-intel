@@ -28,9 +28,20 @@ export interface Deal {
   closed_at: string | null;
 }
 
+// What a note records. "note" is something that happened; "email" is a
+// message that was sent, logged from the draft panel so the history knows
+// about contact the app itself never made.
+export type NoteKind = "note" | "email";
+
 export interface Note {
   id: string;
-  deal_id: string;
+  // A note belongs to a deal, a contact, or both, and the database
+  // refuses one with neither. Only notes with a deal_id feed that deal's
+  // momentum analysis: a note about a person you have no deal with should
+  // not be able to move a deal's health score.
+  deal_id: string | null;
+  contact_id: string | null;
+  kind: NoteKind;
   user_id: string;
   content: string;
   created_at: string;
