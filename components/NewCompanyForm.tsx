@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useActionSuccess } from "@/lib/useActionSuccess";
-import { createCompanyAction, type FormState } from "@/app/companies/actions";
+import { createCompanyAction, type FormState } from "@/app/actions";
 
 const initialState: FormState = { error: null };
 

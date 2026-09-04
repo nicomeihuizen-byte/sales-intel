@@ -4,9 +4,9 @@ import { createMiddlewareSupabaseClient } from "@/lib/supabase";
 // Refreshes the Supabase session cookie on every request (access tokens
 // expire and need rotating - without this, a page could render with a
 // stale/expired token) and enforces the two auth rules for this app:
-// unauthenticated visitors are redirected away from /deals and
-// /companies, and already
-// signed-in visitors are redirected away from /login.
+// unauthenticated visitors are redirected away from the workspace routes
+// ("/", /companies, /deals), and already signed-in visitors are redirected
+// away from /login onto the desk.
 //
 // Named `proxy` rather than `middleware` - Next.js 16 renamed the file
 // convention (same behavior, see node_modules/next/dist/docs). This is an
@@ -20,14 +20,15 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Every signed-in workspace route. /companies was added alongside
-  // /deals and needs the same treatment: without it, the two-pane view
-  // renders its shell to a signed-out visitor before the data queries
-  // come back empty.
-  const isProtectedRoute = ["/deals", "/companies"].some((prefix) =>
-    request.nextUrl.pathname.startsWith(prefix),
-  );
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
+  // Every signed-in workspace route. "/" is the desk itself and has to be
+  // matched exactly rather than by prefix: every path in the app begins
+  // with a slash, so a prefix test would lock the login page behind the
+  // login page.
+  const { pathname } = request.nextUrl;
+  const isProtectedRoute =
+    pathname === "/" ||
+    ["/deals", "/companies"].some((prefix) => pathname.startsWith(prefix));
+  const isAuthRoute = pathname.startsWith("/login");
 
   if (!user && isProtectedRoute) {
     const loginUrl = request.nextUrl.clone();
@@ -36,9 +37,9 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user && isAuthRoute) {
-    const dealsUrl = request.nextUrl.clone();
-    dealsUrl.pathname = "/deals";
-    const redirectResponse = NextResponse.redirect(dealsUrl);
+    const deskUrl = request.nextUrl.clone();
+    deskUrl.pathname = "/";
+    const redirectResponse = NextResponse.redirect(deskUrl);
     // Carry over any refreshed session cookie so the redirect doesn't
     // accidentally drop a token rotation that just happened above.
     response.cookies.getAll().forEach((cookie) => {

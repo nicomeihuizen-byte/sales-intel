@@ -7,6 +7,11 @@ export interface Company {
   user_id: string;
   name: string;
   created_at: string;
+  // When this company was picked as one of the active prospects, or null
+  // when it is not picked. A timestamp rather than a boolean so the
+  // prospects list has a stable order and can say how long each one has
+  // been sitting there without moving.
+  prospect_since: string | null;
 }
 
 export type DealStatus = "open" | "won" | "lost";

@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import {
   updateDealValueAction,
   type FormState,
-} from "@/app/companies/actions";
+} from "@/app/actions";
 import { useActionSuccess } from "@/lib/useActionSuccess";
 import { formatEuro } from "@/lib/metrics";
 

@@ -7,6 +7,24 @@ interface TerminalShellProps {
   label?: string;
   /** Tailwind max-width class for both the header and the card below it. */
   maxWidthClassName?: string;
+  /**
+   * Pin the whole terminal window to the height of the viewport instead of
+   * letting it grow with its content.
+   *
+   * For the two list pages, which are lists that grow forever. A page that
+   * gets taller every time you add a company means the thing you came to
+   * do moves further down the screen the longer you use the app, which is
+   * backwards. In this mode the window is exactly one screen and the list
+   * inside it scrolls, so the header, the counts and the add form stay
+   * where they were the first time you saw them.
+   *
+   * The child is handed a flex column that has already been told to fill
+   * the remaining height, so a list inside it only needs
+   * `min-h-0 flex-1 overflow-y-auto` to become the scrolling region.
+   * `min-h-0` is the part that is easy to forget and the reason a flex
+   * child otherwise refuses to shrink below its content.
+   */
+  fillViewport?: boolean;
 }
 
 /**
@@ -19,12 +37,15 @@ export default function TerminalShell({
   children,
   label,
   maxWidthClassName = "max-w-3xl",
+  fillViewport = false,
 }: TerminalShellProps) {
   return (
-    <div className="min-h-full">
+    <div className={fillViewport ? "flex h-dvh flex-col" : "min-h-full"}>
       {caseStudyLinkEnabled() && (
-        <header className="sticky top-0 z-10 border-b border-line bg-background/90 backdrop-blur">
-          <div className={`mx-auto flex ${maxWidthClassName} items-center justify-between px-6 py-4`}>
+        <header className="sticky top-0 z-10 shrink-0 border-b border-line bg-background/90 backdrop-blur">
+          <div
+            className={`mx-auto flex ${maxWidthClassName} items-center justify-between px-6 py-4`}
+          >
             <a
               href="https://www.meihuizen.ai/projects/ai-sales-deal-intelligence.html"
               className="font-mono text-sm text-muted transition-colors hover:text-accent"
@@ -34,9 +55,19 @@ export default function TerminalShell({
           </div>
         </header>
       )}
-      <main className={`mx-auto ${maxWidthClassName} px-6 py-12`}>
-        <div className="overflow-hidden rounded-lg border border-line bg-raised shadow-[0_30px_60px_-30px_rgba(0,0,0,0.6)]">
-          <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+      <main
+        className={
+          fillViewport
+            ? `mx-auto flex min-h-0 w-full flex-1 flex-col ${maxWidthClassName} px-6 py-6`
+            : `mx-auto ${maxWidthClassName} px-6 py-12`
+        }
+      >
+        <div
+          className={`overflow-hidden rounded-lg border border-line bg-raised shadow-[0_30px_60px_-30px_rgba(0,0,0,0.6)] ${
+            fillViewport ? "flex min-h-0 flex-1 flex-col" : ""
+          }`}
+        >
+          <div className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-3">
             <span className="h-2.5 w-2.5 rounded-full bg-[#AE1C28]" />
             <span className="h-2.5 w-2.5 rounded-full bg-white" />
             <span className="h-2.5 w-2.5 rounded-full bg-[#21468B]" />
@@ -44,7 +75,15 @@ export default function TerminalShell({
               <span className="ml-2 font-mono text-xs text-dim">{label}</span>
             )}
           </div>
-          <div className="p-6 sm:p-8">{children}</div>
+          <div
+            className={
+              fillViewport
+                ? "flex min-h-0 flex-1 flex-col p-6 sm:p-8"
+                : "p-6 sm:p-8"
+            }
+          >
+            {children}
+          </div>
         </div>
       </main>
     </div>

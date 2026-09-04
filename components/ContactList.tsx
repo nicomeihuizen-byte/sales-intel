@@ -10,7 +10,7 @@ import {
   updateContactAction,
   type EmailDraftState,
   type FormState,
-} from "@/app/companies/actions";
+} from "@/app/actions";
 import { DRAFT_LANGUAGES } from "@/lib/draftLanguages";
 import { mailtoHref, profileHref, telHref } from "@/lib/links";
 import { useActionSuccess } from "@/lib/useActionSuccess";

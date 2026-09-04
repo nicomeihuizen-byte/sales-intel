@@ -49,3 +49,40 @@ body {
   color: var(--background);
 }
 
+/*
+ * Scrolling panes on the list pages.
+ *
+ * A default scrollbar inside a dark terminal window looks like a piece of
+ * the operating system that wandered in. This is a thin green rail
+ * instead, so the pane reads as part of the same object as the border
+ * around it.
+ *
+ * The track stays transparent: the rail only shows against the raised card
+ * behind it, which keeps it visible without drawing a second vertical line
+ * beside the pane's own border. Firefox takes `scrollbar-color`, WebKit
+ * takes the pseudo-elements, and a browser that supports neither still
+ * scrolls perfectly well with its normal scrollbar.
+ */
+.scroll-pane {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-dim) transparent;
+}
+
+.scroll-pane::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-pane::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-pane::-webkit-scrollbar-thumb {
+  background: var(--accent-dim);
+  border-radius: 999px;
+}
+
+.scroll-pane::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+

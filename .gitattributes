@@ -1,0 +1,39 @@
+# Line endings, settled once.
+#
+# Without this, a Windows checkout writes CRLF into the working tree while
+# the repository holds LF, and git reports whole files as rewritten when
+# nothing in them changed. It has happened three times in this repo, most
+# recently as "324 insertions, 324 deletions" across seven files that were
+# byte-identical in every way that matters.
+#
+# `text=auto eol=lf` means: decide for yourself which files are text, and
+# store and check out those with LF everywhere, Windows included. Modern
+# editors handle LF files fine, and it is what the repository already
+# contains, so nothing has to be converted on the way in.
+#
+# Run once after adding this file, to tell git the working tree is already
+# what this says it should be:
+#
+#     git add --renormalize .
+#     git status          # should show only .gitattributes
+#
+* text=auto eol=lf
+
+# Shell scripts and Windows scripts must keep their native endings, because
+# the interpreter cares. A .sh with CRLF fails with a confusing
+# "bad interpreter" error; a .bat with LF misbehaves quietly.
+*.sh   text eol=lf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binaries git should never look inside or convert.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.woff binary
+*.woff2 binary

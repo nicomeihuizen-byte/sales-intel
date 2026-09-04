@@ -7,7 +7,7 @@ import NoteList from "@/components/NoteList";
 import NoteForm from "@/components/NoteForm";
 import InsightPanel from "@/components/InsightPanel";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
-import { deleteDealAction } from "@/app/companies/actions";
+import { deleteDealAction } from "@/app/actions";
 import type { Deal, DealInsightRecord, DealMomentum, Note } from "@/lib/types";
 
 // The stored momentum verdicts, in the same colour families the analysis

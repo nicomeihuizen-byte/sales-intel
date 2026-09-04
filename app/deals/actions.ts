@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidateWorkspace } from "@/lib/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { createDeal, isDealStatus, updateDealStatus } from "@/lib/deals";
 import { createNote, getNoteDealId, updateNote } from "@/lib/notes";
@@ -42,7 +43,7 @@ export async function createDealAction(
     };
   }
 
-  revalidatePath("/deals");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -84,7 +85,7 @@ export async function createNoteAction(
   }
 
   revalidatePath(`/deals/${dealId}`);
-  revalidatePath("/companies");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -132,7 +133,7 @@ export async function updateNoteAction(
     revalidatePath(`/deals/${dealId}`);
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -178,8 +179,7 @@ export async function updateDealStatusAction(
     };
   }
 
-  revalidatePath("/companies");
-  revalidatePath("/deals");
+  revalidateWorkspace();
   revalidatePath(`/deals/${dealId}`);
   return { error: null };
 }

@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import {
   analyzeCompanyDealsAction,
   type RefreshState,
-} from "@/app/companies/actions";
+} from "@/app/actions";
 
 const initialState: RefreshState = { error: null, analyzed: 0, failed: 0 };
 

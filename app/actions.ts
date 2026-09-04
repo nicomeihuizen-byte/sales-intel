@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { revalidateWorkspace } from "@/lib/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import {
   createCompany,
   deleteCompany,
   listDealsForCompany,
+  setProspect,
 } from "@/lib/companies";
 import { createNote, listNotesForDeal } from "@/lib/notes";
 import {
@@ -114,7 +116,50 @@ export async function createCompanyAction(
     };
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
+  return { error: null };
+}
+
+/**
+ * Picks or drops one company as an active prospect.
+ *
+ * Sent from the companies page as a form with the id and the direction in
+ * the body, rather than as a bound argument, so the whole row is a plain
+ * `<form>` and the list keeps working with JavaScript still loading.
+ *
+ * Hitting the cap comes back as an error string on the page rather than a
+ * thrown exception, because it is not a fault: it is the feature telling
+ * you that five is five.
+ */
+export async function toggleProspectAction(
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const companyId = formData.get("companyId");
+  const picked = formData.get("picked") === "true";
+
+  if (typeof companyId !== "string") {
+    return { error: "Could not work out which company to pick." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    await setProspect(supabase, companyId, picked);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to update prospects.",
+    };
+  }
+
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -146,7 +191,7 @@ export async function createContactAction(
     };
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -178,7 +223,7 @@ export async function updateContactAction(
     };
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -216,7 +261,7 @@ export async function deleteContactAction(
     };
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -260,8 +305,7 @@ export async function createDealForCompanyAction(
     };
   }
 
-  revalidatePath("/companies");
-  revalidatePath("/deals");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -297,8 +341,7 @@ export async function deleteDealAction(
     };
   }
 
-  revalidatePath("/companies");
-  revalidatePath("/deals");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -335,8 +378,7 @@ export async function deleteCompanyAction(
     };
   }
 
-  revalidatePath("/companies");
-  revalidatePath("/deals");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -367,8 +409,7 @@ export async function updateDealValueAction(
     };
   }
 
-  revalidatePath("/companies");
-  revalidatePath("/deals");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -441,7 +482,7 @@ export async function refreshPipelineAction(
     }
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
 
   return {
     error:
@@ -634,7 +675,7 @@ export async function createContactNoteAction(
     };
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
   return { error: null };
 }
 
@@ -685,7 +726,7 @@ export async function logSentEmailAction(
     };
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
 
   if (dealId) {
     revalidatePath(`/deals/${dealId}`);
@@ -756,7 +797,7 @@ export async function analyzeCompanyDealsAction(
     }
   }
 
-  revalidatePath("/companies");
+  revalidateWorkspace();
 
   return {
     error:

@@ -6,6 +6,24 @@ import type { Company, Deal } from "./types";
 // companies were only ever created as a side effect of creating a deal
 // (findOrCreateCompanyId in lib/deals.ts) and never listed on their own.
 
+/**
+ * How many companies can be prospects at once.
+ *
+ * The number is the feature. A list of everything is a database; five is a
+ * week's work. Change it here and the companies page, the desk and the
+ * server action all move together.
+ */
+export const MAX_PROSPECTS = 5;
+
+/**
+ * Every column a Company needs to be complete, in one place.
+ *
+ * Three separate queries used to carry their own hardcoded list, which is
+ * exactly how deals ended up rendering "€ NaN" when value_eur reached one
+ * query and not the other. Same shape of bug, headed off before it lands.
+ */
+export const COMPANY_COLUMNS = "id, user_id, name, created_at, prospect_since";
+
 export interface CompanyWithCounts extends Company {
   deal_count: number;
   contact_count: number;
@@ -16,6 +34,7 @@ interface CompanyRow {
   user_id: string;
   name: string;
   created_at: string;
+  prospect_since: string | null;
   deals: { count: number }[] | null;
   contacts: { count: number }[] | null;
 }
@@ -41,21 +60,132 @@ export async function listCompaniesForUser(
 ): Promise<CompanyWithCounts[]> {
   const { data, error } = await supabase
     .from("companies")
-    .select("id, user_id, name, created_at, deals(count), contacts(count)")
+    .select(`${COMPANY_COLUMNS}, deals(count), contacts(count)`)
     .order("name", { ascending: true });
 
   if (error) {
     throw new Error(`Failed to load companies: ${error.message}`);
   }
 
-  return ((data ?? []) as CompanyRow[]).map((row) => ({
+  return ((data ?? []) as CompanyRow[]).map(toCompanyWithCounts);
+}
+
+function toCompanyWithCounts(row: CompanyRow): CompanyWithCounts {
+  return {
     id: row.id,
     user_id: row.user_id,
     name: row.name,
     created_at: row.created_at,
+    prospect_since: row.prospect_since,
     deal_count: countFromEmbed(row.deals),
     contact_count: countFromEmbed(row.contacts),
-  }));
+  };
+}
+
+/**
+ * The companies currently picked as prospects, longest-held first.
+ *
+ * That order is deliberate. The one that has been in your five the longest
+ * is the one to either move or drop, so it belongs at the top where you
+ * cannot avoid it, rather than buried under whatever you picked this
+ * morning.
+ */
+export async function listProspects(
+  supabase: SupabaseClient,
+): Promise<CompanyWithCounts[]> {
+  const { data, error } = await supabase
+    .from("companies")
+    .select(`${COMPANY_COLUMNS}, deals(count), contacts(count)`)
+    .not("prospect_since", "is", null)
+    .order("prospect_since", { ascending: true })
+    .limit(MAX_PROSPECTS);
+
+  if (error) {
+    throw new Error(`Failed to load prospects: ${error.message}`);
+  }
+
+  return ((data ?? []) as CompanyRow[]).map(toCompanyWithCounts);
+}
+
+/**
+ * How many prospects are picked right now.
+ *
+ * `head: true` asks Postgres for the count and no rows, which is the whole
+ * question: the companies page needs to know whether the sixth toggle
+ * should be available, not what the other five are called.
+ */
+export async function countProspects(
+  supabase: SupabaseClient,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("companies")
+    .select("id", { count: "exact", head: true })
+    .not("prospect_since", "is", null);
+
+  if (error) {
+    throw new Error(`Failed to count prospects: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
+
+/**
+ * Picks or drops one company as a prospect.
+ *
+ * The cap is enforced here rather than by a database trigger, and that is a
+ * real choice worth stating. A trigger would be the airtight version, but
+ * it can only refuse: it would surface as a raw Postgres exception where a
+ * sentence explaining that you already have five belongs. The race a
+ * trigger would close needs two browsers picking a sixth prospect in the
+ * same instant, which is not a thing that happens to one person working
+ * their own pipeline. If this ever becomes a team tool, the trigger goes in
+ * and this check stays as the friendly half.
+ *
+ * Dropping never fails on the cap, so you can always get back under it.
+ */
+export async function setProspect(
+  supabase: SupabaseClient,
+  companyId: string,
+  picked: boolean,
+): Promise<void> {
+  if (picked) {
+    const current = await countProspects(supabase);
+
+    // Re-picking something already picked must not count against the cap,
+    // which a double-submitted form would otherwise do.
+    const { data: existing, error: readError } = await supabase
+      .from("companies")
+      .select("prospect_since")
+      .eq("id", companyId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(`Failed to read company: ${readError.message}`);
+    }
+
+    const alreadyPicked = Boolean(
+      (existing as { prospect_since: string | null } | null)?.prospect_since,
+    );
+
+    if (!alreadyPicked && current >= MAX_PROSPECTS) {
+      throw new Error(
+        `You already have ${MAX_PROSPECTS} prospects. Drop one before picking another.`,
+      );
+    }
+
+    if (alreadyPicked) {
+      return;
+    }
+  }
+
+  const { error } = await supabase
+    .from("companies")
+    .update({ prospect_since: picked ? new Date().toISOString() : null })
+    .eq("id", companyId);
+
+  if (error) {
+    throw new Error(`Failed to update prospect: ${error.message}`);
+  }
 }
 
 /**
@@ -69,7 +199,7 @@ export async function getCompanyById(
 ): Promise<Company | null> {
   const { data, error } = await supabase
     .from("companies")
-    .select("id, user_id, name, created_at")
+    .select(COMPANY_COLUMNS)
     .eq("id", companyId)
     .maybeSingle();
 
@@ -115,7 +245,7 @@ export async function createCompany(
   const { data, error } = await supabase
     .from("companies")
     .insert({ user_id: userId, name: trimmed })
-    .select("id, user_id, name, created_at")
+    .select(COMPANY_COLUMNS)
     .single();
 
   if (error || !data) {

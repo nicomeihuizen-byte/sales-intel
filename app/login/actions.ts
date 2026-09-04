@@ -37,7 +37,7 @@ export async function signIn(
   }
 
   revalidatePath("/", "layout");
-  redirect("/deals");
+  redirect("/");
 }
 
 export async function signUp(
@@ -60,7 +60,7 @@ export async function signUp(
   // but returns no session until the user clicks the confirmation link.
   if (data.session) {
     revalidatePath("/", "layout");
-    redirect("/deals");
+    redirect("/");
   }
 
   return {

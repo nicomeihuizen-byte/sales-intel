@@ -595,6 +595,11 @@ async function main(): Promise<void> {
 
   const now = new Date();
 
+  // Companies with at least one open deal, in seed order, so the prospects
+  // pass below has something to pick from. A demo that opens on an empty
+  // prospects pane looks broken rather than focused.
+  const openCompanyIds: string[] = [];
+
   for (const company of SEED_DATA) {
     const { data: companyRow, error: companyError } = await supabase
       .from("companies")
@@ -606,6 +611,10 @@ async function main(): Promise<void> {
       throw new Error(
         `Failed to create company "${company.name}": ${companyError?.message ?? "unknown error"}`,
       );
+    }
+
+    if (company.deals.some((deal) => deal.status === "open")) {
+      openCompanyIds.push((companyRow as { id: string }).id);
     }
 
     if (company.contacts?.length) {
@@ -668,6 +677,11 @@ async function main(): Promise<void> {
         deal_id: (dealRow as { id: string }).id,
         content: note.content,
         created_at: daysAgoIso(note.daysAgo, now),
+        // Must match created_at. Without it the column defaults to now(),
+        // so a note backdated three weeks looks three weeks newer than it
+        // is, and NoteList renders "edited" on every seeded note in the
+        // demo. Nothing was edited: only the default gave that impression.
+        updated_at: daysAgoIso(note.daysAgo, now),
       }));
 
       const { error: notesError } = await supabase.from("notes").insert(noteRows);
@@ -684,6 +698,31 @@ async function main(): Promise<void> {
     }
   }
 
+  // Pick the demo's five prospects, staggered rather than all "picked
+  // today". The desk shows how long each has been held, and that number
+  // only says anything if the five do not all say the same thing: a
+  // prospect sitting there for two weeks is the one the screen is trying
+  // to make you notice.
+  const PROSPECT_AGES_IN_DAYS = [16, 9, 5, 2, 0];
+
+  const prospectIds = openCompanyIds.slice(0, PROSPECT_AGES_IN_DAYS.length);
+
+  for (const [index, companyId] of prospectIds.entries()) {
+    const { error: prospectError } = await supabase
+      .from("companies")
+      .update({
+        prospect_since: daysAgoIso(PROSPECT_AGES_IN_DAYS[index], now),
+      })
+      .eq("id", companyId);
+
+    if (prospectError) {
+      throw new Error(
+        `Failed to mark a prospect: ${prospectError.message}`,
+      );
+    }
+  }
+
+  console.log(`Picked ${prospectIds.length} prospect(s).`);
   console.log("Done.");
 }
 

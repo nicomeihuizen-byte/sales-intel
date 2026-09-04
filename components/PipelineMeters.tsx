@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import {
   refreshPipelineAction,
   type RefreshState,
-} from "@/app/companies/actions";
+} from "@/app/actions";
 import { formatEuro } from "@/lib/metrics";
 import type { PipelineMetrics } from "@/lib/types";
 

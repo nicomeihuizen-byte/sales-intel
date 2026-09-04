@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import type { FormState } from "@/app/companies/actions";
+import type { FormState } from "@/app/actions";
 
 const initialState: FormState = { error: null };
 
