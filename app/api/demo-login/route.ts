@@ -20,17 +20,54 @@ export async function GET() {
   }
 
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-  if (error) {
+  if (error || !data.user) {
     redirect("/login");
   }
+
+  await clearStoredAnalyses(supabase, data.user.id);
 
   // Land on a company with something to read rather than on an empty desk.
   // A visitor who arrives at "pick a prospect on the left" has to guess
   // which one is worth opening, and the whole point of the demo is that
   // they press Analyze inside the first ten seconds.
   redirect(`/?company=${await demoLandingCompanyId(supabase)}`);
+}
+
+/**
+ * Hands every visitor an un-analysed pipeline.
+ *
+ * The demo is one shared account, so a stored analysis outlives the person
+ * who ran it. The second visitor arrived to find every deal already carrying
+ * a verdict, the strip reading "6 of 6 analysed", and Analyze reduced to a
+ * button that appears to do nothing because the answer is already on screen.
+ * The one thing the demo exists to show was spent by whoever came first.
+ *
+ * Clearing on the way in, rather than on a schedule, is what makes it
+ * reliable: a schedule still leaves the second visitor of any given hour
+ * looking at the first visitor's leftovers.
+ *
+ * Deliberately only the analyses. Notes, deals and companies are the
+ * material the analysis reads, and wiping those would leave nothing to
+ * analyse at all.
+ *
+ * A failure here is not worth a broken login. If the delete does not land,
+ * the visitor sees a pre-analysed demo, which is the situation this fixes
+ * rather than a new one it creates.
+ */
+async function clearStoredAnalyses(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  userId: string,
+): Promise<void> {
+  try {
+    await supabase.from("deal_insights").delete().eq("user_id", userId);
+  } catch {
+    // fall through: a stale verdict is a worse demo, not a broken one
+  }
 }
 
 /**
