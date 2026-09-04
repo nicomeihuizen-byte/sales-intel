@@ -71,12 +71,21 @@ function heldFor(prospectSince: string): string {
 }
 
 /**
- * Spells out what a company delete takes with it, for the confirm button.
- * Reads as "remove company + 3 contacts, 1 deal, 12 notes?" so the two
- * cascade hops are visible at the moment of deciding, rather than
- * discovered afterwards. An empty company just says "remove company?".
+ * Builds the confirm label for a company delete: "remove Minitab + 3
+ * contacts, 1 deal, 12 notes?".
+ *
+ * Both halves earn their place. The name, because the company title is no
+ * longer printed above this pane and a destructive confirm should never
+ * make you look somewhere else to check what it is about to remove. The
+ * contents, because removing a company cascades to its deals and through
+ * them to their notes, and nothing else on screen says so.
+ *
+ * An empty company is just "remove Acme?".
  */
-function describeCompanyContents(contents: CompanyContents): string {
+function describeCompanyDelete(
+  name: string,
+  contents: CompanyContents,
+): string {
   const parts: string[] = [];
   const plural = (count: number, word: string) =>
     `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -93,7 +102,9 @@ function describeCompanyContents(contents: CompanyContents): string {
     parts.push(plural(contents.notes, "note"));
   }
 
-  return parts.length === 0 ? "company" : `company + ${parts.join(", ")}`;
+  return parts.length === 0
+    ? `remove ${name}?`
+    : `remove ${name} + ${parts.join(", ")}?`;
 }
 
 interface DeskPageProps {
@@ -295,22 +306,13 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
             </p>
           ) : (
             <>
-              <div className="flex shrink-0 items-start justify-between gap-3">
-                <h2 className="font-display text-xl font-semibold text-foreground">
-                  {selectedCompany.name}
-                </h2>
-                {/* The confirm names what goes with it. Removing a
-                    company cascades to its deals and through them to
-                    their notes, and nothing else on screen says so. */}
-                {canDelete && companyContents && (
-                  <ConfirmDeleteButton
-                    action={deleteCompanyAction}
-                    hiddenFields={{ companyId: selectedCompany.id }}
-                    label="remove company"
-                    confirmLabel={`remove ${describeCompanyContents(companyContents)}?`}
-                  />
-                )}
-              </div>
+              {/* No company title here. The selected company is already
+                  named and highlighted in the prospects pane, and a second
+                  copy of it bought one row that pushed "// contacts" out of
+                  line with "// prospects" and "// deals". Three panes whose
+                  headings sit on the same line is worth more than a name
+                  printed twice. */}
+
               {/* Only when there is exactly one deal. This used to pass
                   deals[0] whatever the count, so at a company with two
                   live deals a logged email silently attached itself to
@@ -325,6 +327,19 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                 dealId={deals.length === 1 ? deals[0].id : null}
                 notesByContact={notesByContact}
                 noteCountsByContact={contactNoteCounts}
+                headerAction={
+                  canDelete && companyContents ? (
+                    <ConfirmDeleteButton
+                      action={deleteCompanyAction}
+                      hiddenFields={{ companyId: selectedCompany.id }}
+                      label="remove company"
+                      confirmLabel={describeCompanyDelete(
+                        selectedCompany.name,
+                        companyContents,
+                      )}
+                    />
+                  ) : null
+                }
               />
             </>
           )}

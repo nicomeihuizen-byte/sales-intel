@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 import {
   createContactAction,
   createContactNoteAction,
@@ -635,12 +635,26 @@ export default function ContactList({
   dealId,
   notesByContact,
   noteCountsByContact,
+  headerAction,
 }: {
   companyId: string;
   contacts: Contact[];
   dealId: string | null;
   notesByContact: Record<string, Note[]>;
   noteCountsByContact: Record<string, number>;
+  /**
+   * Rendered at the far right of the `// contacts` header.
+   *
+   * The company's remove control lives here now, because the company title
+   * that used to carry it is gone: the selected company is already named
+   * and highlighted in the prospects pane, and a second copy of the name
+   * bought nothing except a row that pushed this pane's heading out of
+   * line with the other two.
+   *
+   * Passed in as a slot rather than built here, so this stays a component
+   * about people and knows nothing about deleting companies.
+   */
+  headerAction?: ReactNode;
 }) {
   const [isAdding, setIsAdding] = useState(false);
   const [state, formAction, isPending] = useActionState(
@@ -654,17 +668,23 @@ export default function ContactList({
 
   return (
     <section className="mt-6 flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center justify-between">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <h2 className="font-mono text-sm text-accent2">{"// contacts"}</h2>
-        {!isAdding && (
-          <button
-            type="button"
-            onClick={() => setIsAdding(true)}
-            className="font-mono text-xs text-dim transition-colors hover:text-accent"
-          >
-            + add
-          </button>
-        )}
+
+        {/* "+ add" first and the destructive control last, so the one you
+            press weekly is not the one nearest the edge you aim at. */}
+        <div className="flex items-center gap-4">
+          {!isAdding && (
+            <button
+              type="button"
+              onClick={() => setIsAdding(true)}
+              className="font-mono text-xs text-dim transition-colors hover:text-accent"
+            >
+              + add
+            </button>
+          )}
+          {headerAction}
+        </div>
       </div>
 
       {isAdding && (
