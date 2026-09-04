@@ -617,8 +617,17 @@ function ContactRow({
 }
 
 /**
- * The people at one company: a scrollable list, an inline editor per
- * person, and an add form that stays collapsed until you want it.
+ * The people at one company: a scrolling list, an inline editor per person,
+ * and an add form that stays collapsed until you want it.
+ *
+ * The list is the pane's scroll region rather than something that grows to
+ * fit. A company with one contact and a company with six used to make the
+ * whole desk a different height, so switching between them moved every
+ * other pane on the screen. About two cards are visible at a time now and
+ * the rest scroll.
+ *
+ * The header and the add form sit outside the scroll region on purpose:
+ * "+ add" should be where you left it however far down the list you are.
  */
 export default function ContactList({
   companyId,
@@ -644,8 +653,8 @@ export default function ContactList({
   }
 
   return (
-    <section className="mt-6">
-      <div className="flex items-center justify-between">
+    <section className="mt-6 flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center justify-between">
         <h2 className="font-mono text-sm text-accent2">{"// contacts"}</h2>
         {!isAdding && (
           <button
@@ -659,7 +668,7 @@ export default function ContactList({
       </div>
 
       {isAdding && (
-        <div className="mt-3 rounded border border-accent-dim px-3 py-3">
+        <div className="mt-3 shrink-0 rounded border border-accent-dim px-3 py-3">
           <ContactFields
             formAction={formAction}
             state={state}
@@ -675,7 +684,9 @@ export default function ContactList({
       )}
 
       {contacts.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-2">
+        // pr-1 keeps the green rail off the card borders rather than
+        // sitting on top of them.
+        <ul className="scroll-pane mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
           {contacts.map((contact) => (
             <ContactRow
               key={contact.id}

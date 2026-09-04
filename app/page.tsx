@@ -201,9 +201,15 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
 
       <PipelineMeters metrics={metrics} />
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,14rem)_minmax(0,1.1fr)_minmax(0,1fr)]">
-        <aside className="lg:border-r lg:border-line lg:pr-6">
-          <div className="flex items-baseline justify-between gap-2">
+      {/* One fixed-height row of three panes from lg up, each scrolling
+          its own body. This is what stops the desk moving: the pane row is
+          the same height whether a company has one contact or nine, and
+          whether you have picked two prospects or five. Below lg the panes
+          stack and take their natural height, where a fixed row would just
+          mean two scrollbars on a phone. */}
+      <div className="mt-8 grid gap-8 lg:h-[30rem] lg:grid-cols-[minmax(0,14rem)_minmax(0,1.1fr)_minmax(0,1fr)]">
+        <aside className="flex min-h-0 flex-col lg:border-r lg:border-line lg:pr-6">
+          <div className="flex shrink-0 items-baseline justify-between gap-2">
             <h2 className="font-mono text-sm text-accent2">
               {"// prospects"}
             </h2>
@@ -212,17 +218,28 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
             </span>
           </div>
 
-          <ul className="mt-3 flex flex-col gap-1">
-            {prospects.length === 0 && (
-              <li className="text-sm text-muted">
-                Nothing picked yet. Choose up to {MAX_PROSPECTS} on the{" "}
-                <Link href="/companies" className="text-accent underline">
-                  companies
-                </Link>{" "}
-                page.
-              </li>
-            )}
-            {prospects.map((entry) => {
+          {/* Always five rows, filled or not. Rendering the empty ones
+              costs nothing and buys two things: the pane is the same
+              height whatever you have picked, so nothing below it moves,
+              and three dashed boxes are a more honest picture of a
+              half-used week than a short list is. */}
+          <ul className="scroll-pane mt-3 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
+            {Array.from({ length: MAX_PROSPECTS }, (_, index) => {
+              const entry = prospects[index];
+
+              if (!entry) {
+                return (
+                  <li
+                    key={`empty-${index}`}
+                    className="flex min-h-[4.75rem] items-center justify-center rounded border border-dashed border-line px-3 py-2"
+                  >
+                    <span className="font-mono text-xs text-dim">
+                      empty slot
+                    </span>
+                  </li>
+                );
+              }
+
               const isSelected = entry.id === selectedCompany?.id;
 
               return (
@@ -230,13 +247,16 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                   <Link
                     href={`/?company=${entry.id}`}
                     aria-current={isSelected ? "true" : undefined}
-                    className={`block rounded px-3 py-2 transition-colors ${
+                    className={`block min-h-[4.75rem] rounded px-3 py-2 transition-colors ${
                       isSelected
                         ? "border border-accent-dim bg-background text-foreground"
                         : "border border-transparent text-muted hover:border-line hover:text-foreground"
                     }`}
                   >
-                    <span className="block text-sm font-medium">
+                    {/* Two lines at most, so a long name cannot make one
+                        row taller than the rest and undo the whole
+                        point of the fixed height. */}
+                    <span className="line-clamp-2 block text-sm font-medium">
                       {entry.name}
                     </span>
                     <span className="mt-0.5 flex items-center justify-between gap-2 font-mono text-xs text-dim">
@@ -261,13 +281,13 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
               form that quietly grows it would undo the point of the cap. */}
           <Link
             href="/companies"
-            className="mt-3 block font-mono text-xs text-dim transition-colors hover:text-accent"
+            className="mt-3 block shrink-0 font-mono text-xs text-dim transition-colors hover:text-accent"
           >
             change prospects &gt;
           </Link>
         </aside>
 
-        <section className="min-w-0 lg:border-r lg:border-line lg:pr-6">
+        <section className="flex min-h-0 min-w-0 flex-col lg:border-r lg:border-line lg:pr-6">
           {!selectedCompany ? (
             <p className="text-sm text-muted">
               Pick one of your prospects on the left to see its people and its
@@ -275,7 +295,7 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
             </p>
           ) : (
             <>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex shrink-0 items-start justify-between gap-3">
                 <h2 className="font-display text-xl font-semibold text-foreground">
                   {selectedCompany.name}
                 </h2>
@@ -310,10 +330,10 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
           )}
         </section>
 
-        <section className="min-w-0">
+        <section className="flex min-h-0 min-w-0 flex-col">
           {selectedCompany && (
             <>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex shrink-0 items-center justify-between gap-3">
                 <h2 className="font-mono text-sm text-accent2">{"// deals"}</h2>
                 <AnalyzeDealsButton companyId={selectedCompany.id} />
               </div>
@@ -331,7 +351,9 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                 />
               )}
 
-              <NewDealInCompanyForm companyId={selectedCompany.id} />
+              <div className="shrink-0">
+                <NewDealInCompanyForm companyId={selectedCompany.id} />
+              </div>
             </>
           )}
         </section>

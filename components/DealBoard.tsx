@@ -134,7 +134,10 @@ export default function DealBoard({
 
   return (
     <>
-      <ul className="mt-3 flex flex-col gap-2">
+      {/* The pane's scroll region, so a company with six deals is exactly
+          as tall as one with two and nothing on the desk moves when you
+          switch between them. */}
+      <ul className="scroll-pane mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
         {deals.map((deal) => {
           const insight = insightsByDeal[deal.id];
 
