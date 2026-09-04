@@ -95,6 +95,18 @@ slot. Change both together or the five stop matching, which is the whole point o
 **How wide the page is.** `maxWidthClassName="max-w-[1800px]"` on `TerminalShell`. The same
 prop is on the companies and deals pages.
 
+**Why the three pane headings line up.** Each header row is `h-8`, a fixed 32 pixels, with its
+contents centred in it. That is not decoration. Each header carries something different beside
+its heading, a `5/5` count on prospects, two text buttons on contacts, the `Analyze` button on
+deals, and those are different heights. Let the rows size themselves and the three headings
+land at three slightly different heights, a few pixels apart, which nobody can point at but
+everybody can see. **Change `h-8` in all three places or none:** twice in `app/page.tsx`, once
+in `components/ContactList.tsx`.
+
+The same rule applies to margins above a heading. `// contacts` once had `mt-6` on its section,
+left over from when a company title sat above it, and that alone put it 24 pixels below the
+other two.
+
 ### The list pages (`app/companies/page.tsx`, `app/deals/page.tsx`)
 
 `fillViewport` on `TerminalShell` is what makes them exactly one screen tall. Remove that one

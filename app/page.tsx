@@ -220,7 +220,14 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
           mean two scrollbars on a phone. */}
       <div className="mt-8 grid gap-8 lg:h-[30rem] lg:grid-cols-[minmax(0,14rem)_minmax(0,1.1fr)_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col lg:border-r lg:border-line lg:pr-6">
-          <div className="flex shrink-0 items-baseline justify-between gap-2">
+          {/* h-8 on all three pane headers. Each one carries something
+              different next to its heading (a count here, two buttons on
+              contacts, the Analyze button on deals), and those have
+              different heights, so without a fixed height the three
+              headings sit at three slightly different y positions and the
+              whole desk looks slightly wrong in a way that is hard to
+              point at. Change this number in all three or none. */}
+          <div className="flex h-8 shrink-0 items-center justify-between gap-2">
             <h2 className="font-mono text-sm text-accent2">
               {"// prospects"}
             </h2>
@@ -348,7 +355,8 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
         <section className="flex min-h-0 min-w-0 flex-col">
           {selectedCompany && (
             <>
-              <div className="flex shrink-0 items-center justify-between gap-3">
+              {/* h-8, matching the other two pane headers. */}
+              <div className="flex h-8 shrink-0 items-center justify-between gap-3">
                 <h2 className="font-mono text-sm text-accent2">{"// deals"}</h2>
                 <AnalyzeDealsButton companyId={selectedCompany.id} />
               </div>

@@ -667,8 +667,12 @@ export default function ContactList({
   }
 
   return (
-    <section className="mt-6 flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3">
+    // No top margin. This section used to sit under the company title and
+    // needed clearing from it; with the title gone, a margin here just
+    // pushes "// contacts" 24px below the headings in the other two panes.
+    <section className="flex min-h-0 flex-1 flex-col">
+      {/* h-8, matching the pane headers in app/page.tsx. */}
+      <div className="flex h-8 shrink-0 items-center justify-between gap-3">
         <h2 className="font-mono text-sm text-accent2">{"// contacts"}</h2>
 
         {/* "+ add" first and the destructive control last, so the one you
