@@ -336,7 +336,16 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                 noteCountsByContact={contactNoteCounts}
                 headerAction={
                   canDelete && companyContents ? (
+                    // The key is not decoration and must not be tidied
+                    // away. This element is created here, in a Server
+                    // Component, and ends up beside "+ add" in a two-item
+                    // child array inside ContactList. React counts that as
+                    // a list and asks every entry for a key, and an
+                    // element serialized across the server boundary cannot
+                    // borrow the static-children shortcut that normally
+                    // exempts hand-written JSX.
                     <ConfirmDeleteButton
+                      key="remove-company"
                       action={deleteCompanyAction}
                       hiddenFields={{ companyId: selectedCompany.id }}
                       label="remove company"

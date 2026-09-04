@@ -653,6 +653,11 @@ export default function ContactList({
    *
    * Passed in as a slot rather than built here, so this stays a component
    * about people and knows nothing about deleting companies.
+   *
+   * Whatever is passed needs a `key`. It lands beside "+ add" in a
+   * two-item child array, and an element created in a Server Component and
+   * serialized across to here does not get the static-children exemption
+   * that hand-written JSX does, so React asks it for one.
    */
   headerAction?: ReactNode;
 }) {
