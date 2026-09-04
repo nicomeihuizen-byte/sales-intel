@@ -118,66 +118,77 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const prospects = await listProspects(supabase);
-  const metrics = await computePipelineMetrics(supabase);
-
   // Read once here and passed down, so the panes render consistently. The
   // actions check it again themselves - this only decides what is drawn.
   const canDelete = destructiveActionsEnabled();
 
+  // Three waves, not eleven queries in a row.
+  //
+  // This page used to await each query in turn, so the server sat through
+  // roughly eleven consecutive round trips to Supabase before it could send
+  // a single byte. Nothing renders until a Server Component finishes, so
+  // that time is spent staring at the previous page with nothing happening,
+  // which is exactly what it felt like.
+  //
+  // Everything below is grouped by what it genuinely depends on. Within a
+  // wave the queries do not know about each other and run at once; the
+  // waves themselves are ordered only because the later ones need ids the
+  // earlier ones return.
+  //
+  // Wave one: nothing here depends on anything.
+  //
   // An id in the URL that no longer resolves (deleted, or someone else's,
   // which RLS makes indistinguishable) falls back to showing nothing
   // selected rather than a not-found page. A stale bookmark should land
   // you in the app, not on an error.
-  const selectedCompany = companyId
-    ? await getCompanyById(supabase, companyId)
-    : null;
+  const [prospects, insights, selectedCompany] = await Promise.all([
+    listProspects(supabase),
+    listDealInsights(supabase),
+    companyId ? getCompanyById(supabase, companyId) : Promise.resolve(null),
+  ]);
 
-  const contacts = selectedCompany
-    ? await listContactsForCompany(supabase, selectedCompany.id)
-    : [];
-  const deals = selectedCompany
-    ? await listDealsForCompany(supabase, selectedCompany.id)
-    : [];
+  // Wave two: needs the selected company, and hands the metrics panel the
+  // insights we already have so it does not fetch them a second time.
+  const [metrics, contacts, deals] = await Promise.all([
+    computePipelineMetrics(supabase, insights),
+    selectedCompany
+      ? listContactsForCompany(supabase, selectedCompany.id)
+      : Promise.resolve([]),
+    selectedCompany
+      ? listDealsForCompany(supabase, selectedCompany.id)
+      : Promise.resolve([]),
+  ]);
 
-  // Only counted when the remove control is going to be drawn. Nobody
-  // needs three extra queries per page load to render a button that isn't
-  // there.
-  const companyContents: CompanyContents | null =
-    selectedCompany && canDelete
-      ? await countCompanyContents(
-          supabase,
-          selectedCompany.id,
-          deals.map((deal) => deal.id),
-        )
-      : null;
+  // Wave three: needs the contact and deal ids from wave two. The counts are
+  // only fetched when the remove control is going to be drawn, because
+  // nobody needs three extra queries to render a button that is not there.
+  const [companyContents, contactNoteCounts, contactNoteLists, dealNoteLists] =
+    await Promise.all([
+      selectedCompany && canDelete
+        ? countCompanyContents(
+            supabase,
+            selectedCompany.id,
+            deals.map((deal) => deal.id),
+          )
+        : Promise.resolve(null),
+      countNotesByContact(supabase, contacts.map((contact) => contact.id)),
+      Promise.all(
+        contacts.map(async (contact) =>
+          [contact.id, await listNotesForContact(supabase, contact.id)] as const,
+        ),
+      ),
+      Promise.all(
+        deals.map(async (deal) =>
+          [deal.id, await listNotesForDeal(supabase, deal.id)] as const,
+        ),
+      ),
+    ]);
 
-  // Everything the three panes need, gathered here so the panes stay
-  // presentational and nothing fetches from inside a render.
-  const contactNoteCounts = await countNotesByContact(
-    supabase,
-    contacts.map((contact) => contact.id),
-  );
-
-  const contactNoteLists = await Promise.all(
-    contacts.map(async (contact) => [
-      contact.id,
-      await listNotesForContact(supabase, contact.id),
-    ] as const),
-  );
   const notesByContact = Object.fromEntries(contactNoteLists);
-
-  const dealNoteLists = await Promise.all(
-    deals.map(async (deal) => [
-      deal.id,
-      await listNotesForDeal(supabase, deal.id),
-    ] as const),
-  );
   const notesByDeal = Object.fromEntries(dealNoteLists);
 
   // The stored verdicts, so each deal row can show the last thing the
   // analysis said without this page making a single model call.
-  const insights = deals.length > 0 ? await listDealInsights(supabase) : [];
   const insightsByDeal = Object.fromEntries(
     insights
       .filter((insight) => insight.deal_id in notesByDeal)
@@ -189,10 +200,31 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
     <TerminalShell label="~/desk" maxWidthClassName="max-w-[1800px]">
       <div className="flex items-start justify-between gap-6">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-accent">
-            Deal Management
-          </h1>
-          <p className="mt-2 text-muted">Signed in as {user?.email}.</p>
+          {/* The product lockup: mark, then wordmark, then what it is.
+              The mark carries the green, so the wordmark does not - two
+              green things side by side read as one shouted word. The
+              mark is decorative here (alt=""), because the wordmark
+              beside it already says the name and a screen reader should
+              not hear it twice. */}
+          <div className="flex items-center gap-3.5">
+            <Image
+              src="/five-mark.svg"
+              alt=""
+              width={44}
+              height={44}
+              priority
+              className="h-11 w-11 shrink-0"
+            />
+            <div>
+              <h1 className="font-display text-2xl font-semibold leading-none text-foreground">
+                Five
+              </h1>
+              <p className="mt-1.5 font-mono text-xs text-dim">
+                deal management
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-sm text-muted">Signed in as {user?.email}.</p>
         </div>
 
         {/* Drop your logo at public/logo.png (or .svg and change the src).
@@ -209,6 +241,17 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
 
         <AppNav current="desk" />
       </div>
+
+      {/* Five is a desk tool and is not pretending otherwise. Below lg the
+          three panes stack into one long column, which works but is not
+          what this is for. Saying so beats either blocking the visitor or
+          letting them conclude it is broken: a phone is where most people
+          open a link from an email, and being told "not here" is a worse
+          first impression than being told "this bit needs a screen". */}
+      <p className="mt-6 rounded border border-accent-dim bg-raised px-4 py-3 font-mono text-xs leading-relaxed text-muted lg:hidden">
+        Five is built for a desk. On a phone it still reads, but the three
+        panes stack and the analysis is easier on a wider screen.
+      </p>
 
       <PipelineMeters metrics={metrics} />
 

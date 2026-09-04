@@ -6,6 +6,7 @@ import type {
   PipelineMetrics,
 } from "./types";
 import { listDealInsights } from "./insights";
+import { DEAL_COLUMNS } from "./deals";
 
 // The four numbers behind the metrics panel. All derived, none stored.
 
@@ -117,19 +118,24 @@ function averageMonthsToWin(deals: Deal[]): {
  */
 export async function computePipelineMetrics(
   supabase: SupabaseClient,
+  /**
+   * Already-loaded insights, when the caller has them.
+   *
+   * The desk needs the same rows to render its deal summaries, so fetching
+   * them here as well meant the page issued the identical query twice, one
+   * after the other. Passing them in removes a whole round trip from a page
+   * that had far too many.
+   */
+  knownInsights?: DealInsightRecord[],
 ): Promise<PipelineMetrics> {
-  const { data, error } = await supabase
-    .from("deals")
-    .select(
-      "id, company_id, user_id, title, status, created_at, value_eur, closed_at",
-    );
+  const { data, error } = await supabase.from("deals").select(DEAL_COLUMNS);
 
   if (error) {
     throw new Error(`Failed to load deals for metrics: ${error.message}`);
   }
 
   const deals = (data ?? []) as Deal[];
-  const insights = await listDealInsights(supabase);
+  const insights = knownInsights ?? (await listDealInsights(supabase));
 
   const openDeals = deals.filter((deal) => deal.status === "open");
   const wonDeals = deals.filter((deal) => deal.status === "won");
