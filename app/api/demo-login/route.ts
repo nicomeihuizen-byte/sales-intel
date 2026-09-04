@@ -26,5 +26,77 @@ export async function GET() {
     redirect("/login");
   }
 
-  redirect("/");
+  // Land on a company with something to read rather than on an empty desk.
+  // A visitor who arrives at "pick a prospect on the left" has to guess
+  // which one is worth opening, and the whole point of the demo is that
+  // they press Analyze inside the first ten seconds.
+  redirect(`/?company=${await demoLandingCompanyId(supabase)}`);
+}
+
+/**
+ * Which company the demo opens on.
+ *
+ * Resolved at request time rather than hardcoded as a UUID, because
+ * `npm run seed` wipes and reinserts the demo data and every company gets a
+ * fresh id. A pasted id works until the next reseed and then silently sends
+ * every visitor to an empty desk, which is the worst kind of broken: the
+ * page still loads.
+ *
+ * Order of preference:
+ *   1. DEMO_COMPANY, a company NAME set in the environment. Names survive
+ *      reseeding; ids do not.
+ *   2. The company with the most notes, which is the one with the most for
+ *      the analysis to chew on and therefore the best first impression.
+ *
+ * Returns an empty string if neither resolves, which lands on the normal
+ * desk. A demo that opens one level less deep is a worse demo, not a
+ * broken one.
+ */
+async function demoLandingCompanyId(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+): Promise<string> {
+  const preferred = process.env.DEMO_COMPANY?.trim();
+
+  if (preferred) {
+    const { data } = await supabase
+      .from("companies")
+      .select("id")
+      .ilike("name", preferred)
+      .limit(1)
+      .maybeSingle();
+
+    const id = (data as { id: string } | null)?.id;
+
+    if (id) {
+      return id;
+    }
+  }
+
+  // notes -> deals -> companies. Counting through the join rather than
+  // storing a tally keeps this honest when the seed changes.
+  const { data: rows } = await supabase
+    .from("deals")
+    .select("company_id, notes(count)");
+
+  const totals = new Map<string, number>();
+
+  for (const row of (rows ?? []) as {
+    company_id: string;
+    notes: { count: number }[] | null;
+  }[]) {
+    const count = row.notes?.[0]?.count ?? 0;
+    totals.set(row.company_id, (totals.get(row.company_id) ?? 0) + count);
+  }
+
+  let best = "";
+  let bestCount = -1;
+
+  for (const [companyId, count] of totals) {
+    if (count > bestCount) {
+      best = companyId;
+      bestCount = count;
+    }
+  }
+
+  return best;
 }
