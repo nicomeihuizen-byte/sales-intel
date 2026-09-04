@@ -8,7 +8,13 @@ import NoteForm from "@/components/NoteForm";
 import InsightPanel from "@/components/InsightPanel";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import { deleteDealAction } from "@/app/actions";
-import type { Deal, DealInsightRecord, DealMomentum, Note } from "@/lib/types";
+import type {
+  Deal,
+  DealInsightRecord,
+  DealMomentum,
+  DealStatus,
+  Note,
+} from "@/lib/types";
 
 // The stored momentum verdicts, in the same colour families the analysis
 // panel uses, so a summary in this pane and the badge inside the overlay
@@ -23,6 +29,30 @@ const MOMENTUM_LABEL: Record<DealMomentum, string> = {
   healthy: "healthy",
   stalling: "stalling",
   at_risk: "at risk",
+};
+
+// Status on every row, because the pane's Analyze button reads open deals
+// only. Without it a won deal sat here saying "not analysed yet" beside a
+// button answering "no open deals here to analyse": two true statements
+// that contradict each other, which is worse than either being wrong.
+const STATUS_STYLE: Record<DealStatus, string> = {
+  open: "text-dim",
+  won: "text-emerald-400",
+  lost: "text-dim",
+};
+
+/**
+ * What a deal with no stored analysis should say about itself.
+ *
+ * A closed deal is not waiting for the button above it. It can still be
+ * analysed, but as a win or loss review, one at a time, from inside the
+ * overlay. Saying so is the difference between a pane that looks stuck and
+ * one that tells you where to click.
+ */
+const UNANALYSED_HINT: Record<DealStatus, string> = {
+  open: "Not analysed yet. Open it and press Analyze.",
+  won: "Won. Open it for a review of what made it close.",
+  lost: "Lost. Open it for a loss review.",
 };
 
 /**
@@ -152,22 +182,28 @@ export default function DealBoard({
                   <span className="min-w-0 truncate text-sm font-medium text-foreground">
                     {deal.title}
                   </span>
-                  {insight && (
-                    <span
-                      className={`shrink-0 font-mono text-[11px] uppercase ${MOMENTUM_STYLE[insight.momentum]}`}
-                    >
-                      {MOMENTUM_LABEL[insight.momentum]}
+                  <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase">
+                    <span className={STATUS_STYLE[deal.status]}>
+                      {deal.status}
                     </span>
-                  )}
+                    {insight && (
+                      <>
+                        <span className="text-line" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className={MOMENTUM_STYLE[insight.momentum]}>
+                          {MOMENTUM_LABEL[insight.momentum]}
+                        </span>
+                      </>
+                    )}
+                  </span>
                 </div>
 
                 {/* Three lines of the stored reasoning. Enough to know
                     whether this is the deal you were looking for, not
                     enough to read instead of opening it. */}
                 <p className="mt-1 line-clamp-3 text-xs text-muted">
-                  {insight
-                    ? insight.reasoning
-                    : "Not analysed yet. Open it and press Analyze."}
+                  {insight ? insight.reasoning : UNANALYSED_HINT[deal.status]}
                 </p>
               </button>
             </li>

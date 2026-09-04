@@ -187,6 +187,11 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
   const notesByContact = Object.fromEntries(contactNoteLists);
   const notesByDeal = Object.fromEntries(dealNoteLists);
 
+  // Which deals the pane's Analyze button will actually touch. Not used to
+  // filter the list - every deal stays visible and carries its status -
+  // only to decide what a drafted email should attach itself to.
+  const openDeals = deals.filter((deal) => deal.status === "open");
+
   // The stored verdicts, so each deal row can show the last thing the
   // analysis said without this page making a single model call.
   const insightsByDeal = Object.fromEntries(
@@ -374,7 +379,7 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
               <ContactList
                 companyId={selectedCompany.id}
                 contacts={contacts}
-                dealId={deals.length === 1 ? deals[0].id : null}
+                dealId={openDeals.length === 1 ? openDeals[0].id : null}
                 notesByContact={notesByContact}
                 noteCountsByContact={contactNoteCounts}
                 headerAction={
