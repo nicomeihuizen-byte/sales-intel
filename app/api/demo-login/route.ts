@@ -79,10 +79,17 @@ async function clearStoredAnalyses(
  * every visitor to an empty desk, which is the worst kind of broken: the
  * page still loads.
  *
+ * Only a picked prospect qualifies, in both branches below. The desk shows
+ * the five and nothing else, so a company that is not one of them lands on
+ * a desk with no company selected: the visitor's first screen would be the
+ * empty state, and the demo would open one level less deep than the plain
+ * desk it was supposed to improve on. Anything that puts an id in this
+ * URL has to honour the same rule as the links in the app.
+ *
  * Order of preference:
  *   1. DEMO_COMPANY, a company NAME set in the environment. Names survive
  *      reseeding; ids do not.
- *   2. The company with the most notes, which is the one with the most for
+ *   2. The prospect with the most notes, which is the one with the most for
  *      the analysis to chew on and therefore the best first impression.
  *
  * Returns an empty string if neither resolves, which lands on the normal
@@ -99,6 +106,7 @@ async function demoLandingCompanyId(
       .from("companies")
       .select("id")
       .ilike("name", preferred)
+      .not("prospect_since", "is", null)
       .limit(1)
       .maybeSingle();
 
@@ -109,11 +117,26 @@ async function demoLandingCompanyId(
     }
   }
 
-  // notes -> deals -> companies. Counting through the join rather than
-  // storing a tally keeps this honest when the seed changes.
+  const { data: prospectRows } = await supabase
+    .from("companies")
+    .select("id")
+    .not("prospect_since", "is", null);
+
+  const prospectIds = ((prospectRows ?? []) as { id: string }[]).map(
+    (row) => row.id,
+  );
+
+  if (prospectIds.length === 0) {
+    return "";
+  }
+
+  // notes -> deals -> companies, narrowed to the five. Counting through the
+  // join rather than storing a tally keeps this honest when the seed
+  // changes.
   const { data: rows } = await supabase
     .from("deals")
-    .select("company_id, notes(count)");
+    .select("company_id, notes(count)")
+    .in("company_id", prospectIds);
 
   const totals = new Map<string, number>();
 

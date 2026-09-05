@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEAL_COLUMNS } from "./deals";
+import { profileHref } from "./links";
 import type { Company, Deal } from "./types";
 
 // Data-access layer for companies. Until the two-pane view existed,
@@ -22,19 +23,24 @@ export const MAX_PROSPECTS = 5;
  * exactly how deals ended up rendering "€ NaN" when value_eur reached one
  * query and not the other. Same shape of bug, headed off before it lands.
  */
-export const COMPANY_COLUMNS = "id, user_id, name, created_at, prospect_since";
+export const COMPANY_COLUMNS =
+  "id, user_id, name, created_at, prospect_since, address, country, website, email, phone, socials, vat_number, registration_number";
 
 export interface CompanyWithCounts extends Company {
   deal_count: number;
   contact_count: number;
 }
 
-interface CompanyRow {
-  id: string;
-  user_id: string;
-  name: string;
-  created_at: string;
-  prospect_since: string | null;
+/**
+ * `extends Company` rather than a second hand-written column list.
+ *
+ * The previous version restated all five fields here and again in
+ * toCompanyWithCounts, so adding a column meant remembering three places.
+ * That is the same failure the COMPANY_COLUMNS comment above describes:
+ * the eight detail columns would have arrived in the query, missed the row
+ * type, and turned up as undefined in the panel.
+ */
+interface CompanyRow extends Company {
   deals: { count: number }[] | null;
   contacts: { count: number }[] | null;
 }
@@ -71,14 +77,12 @@ export async function listCompaniesForUser(
 }
 
 function toCompanyWithCounts(row: CompanyRow): CompanyWithCounts {
+  const { deals, contacts, ...company } = row;
+
   return {
-    id: row.id,
-    user_id: row.user_id,
-    name: row.name,
-    created_at: row.created_at,
-    prospect_since: row.prospect_since,
-    deal_count: countFromEmbed(row.deals),
-    contact_count: countFromEmbed(row.contacts),
+    ...company,
+    deal_count: countFromEmbed(deals),
+    contact_count: countFromEmbed(contacts),
   };
 }
 
@@ -211,6 +215,134 @@ export async function getCompanyById(
 }
 
 /**
+ * Everything the forms can set on a company. Name is the only required
+ * one, matching ContactInput: a prospect you heard about on a call has a
+ * name and nothing else, and the tool should take it.
+ */
+export interface CompanyInput {
+  name: string;
+  address?: string;
+  country?: string;
+  website?: string;
+  email?: string;
+  phone?: string;
+  socials?: string[];
+  vatNumber?: string;
+  registrationNumber?: string;
+}
+
+/**
+ * Trims everything, turns the empty fields into null, and normalizes the
+ * two URL fields to a full https URL before they are stored.
+ *
+ * The URL half is worth being explicit about. lib/links.ts already refuses
+ * to render an unsafe href, so nothing here is the security boundary - but
+ * a `javascript:` URL that is silently accepted at the form and then
+ * silently not rendered as a link is a value you typed, saved, and can
+ * never work out why nothing happens when you click it. Refusing at the
+ * point of entry means the answer arrives while you are still looking at
+ * the box.
+ *
+ * `profileHref` does the parse for both fields, so a company website and a
+ * contact's LinkedIn URL are held to exactly one rule.
+ */
+function normalizeCompanyInput(input: CompanyInput) {
+  const blankToNull = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : null;
+  };
+
+  const urlOrNull = (value: string | undefined, label: string) => {
+    const trimmed = value?.trim();
+
+    if (!trimmed) {
+      return null;
+    }
+
+    const href = profileHref(trimmed);
+
+    if (!href) {
+      throw new Error(`That ${label} is not a web address.`);
+    }
+
+    return href;
+  };
+
+  const name = input.name.trim();
+
+  if (!name) {
+    throw new Error("A company needs a name.");
+  }
+
+  return {
+    name,
+    address: blankToNull(input.address),
+    country: blankToNull(input.country),
+    website: urlOrNull(input.website, "website"),
+    email: blankToNull(input.email),
+    phone: blankToNull(input.phone),
+    // Trimmed, blanks dropped, de-duplicated, and normalized to full URLs
+    // where they parse as one. Unlike `website` a bad entry here is not
+    // refused: the form takes several, and failing the whole save because
+    // one of five boxes holds an @handle would be the form arguing with
+    // you over a field that is decoration on a link.
+    socials: Array.from(
+      new Set(
+        (input.socials ?? [])
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+          .map((value) => profileHref(value) ?? value),
+      ),
+    ),
+    vat_number: blankToNull(input.vatNumber),
+    registration_number: blankToNull(input.registrationNumber),
+  };
+}
+
+/**
+ * Is another company already called this?
+ *
+ * `excludeId` is what makes this reusable for the edit form. Without it,
+ * saving a company without touching the name field would find itself and
+ * report the name as taken, which is the classic uniqueness-check bug and
+ * would make the details form unusable for its most common case.
+ *
+ * Case-insensitive via ilike, and no wildcards in the pattern, so "Oracle"
+ * collides with "oracle" and not with "Oracle Nederland".
+ */
+async function assertNameIsFree(
+  supabase: SupabaseClient,
+  userId: string,
+  name: string,
+  excludeId?: string,
+): Promise<void> {
+  let query = supabase
+    .from("companies")
+    .select("id, name")
+    .eq("user_id", userId)
+    .ilike("name", name);
+
+  if (excludeId) {
+    query = query.neq("id", excludeId);
+  }
+
+  const { data, error } = await query.limit(1).maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to look up company: ${error.message}`);
+  }
+
+  if (data) {
+    // The stored spelling, not the one just typed. Typing "oracle" and
+    // being told `"oracle" is already in your list` reads like a bug when
+    // the list plainly says Oracle; naming the row that actually collided
+    // is what makes the message act on.
+    const clash = (data as { name: string }).name;
+    throw new Error(`"${clash}" is already in your list.`);
+  }
+}
+
+/**
  * Creates a company with no deal attached. The deal form still creates
  * companies implicitly, but a prospect you have only spoken to needs to
  * exist before there is anything to call a deal.
@@ -218,33 +350,15 @@ export async function getCompanyById(
 export async function createCompany(
   supabase: SupabaseClient,
   userId: string,
-  name: string,
+  input: CompanyInput,
 ): Promise<Company> {
-  const trimmed = name.trim();
+  const fields = normalizeCompanyInput(input);
 
-  if (!trimmed) {
-    throw new Error("A company needs a name.");
-  }
-
-  const { data: existing, error: findError } = await supabase
-    .from("companies")
-    .select("id")
-    .eq("user_id", userId)
-    .ilike("name", trimmed)
-    .limit(1)
-    .maybeSingle();
-
-  if (findError) {
-    throw new Error(`Failed to look up company: ${findError.message}`);
-  }
-
-  if (existing) {
-    throw new Error(`"${trimmed}" is already in your list.`);
-  }
+  await assertNameIsFree(supabase, userId, fields.name);
 
   const { data, error } = await supabase
     .from("companies")
-    .insert({ user_id: userId, name: trimmed })
+    .insert({ user_id: userId, ...fields })
     .select(COMPANY_COLUMNS)
     .single();
 
@@ -252,6 +366,49 @@ export async function createCompany(
     throw new Error(
       `Failed to create company: ${error?.message ?? "unknown error"}`,
     );
+  }
+
+  return data as Company;
+}
+
+/**
+ * Saves the details on an existing company.
+ *
+ * Every field is written on every save, including the ones left empty, so
+ * clearing a box clears the column. A partial update would mean there is
+ * no way to remove a phone number that has changed, which is worse than
+ * useless on the field most likely to go stale.
+ *
+ * `prospect_since` is deliberately not here. Whether a company is one of
+ * your five is a decision made with the toggle on the companies page, not
+ * a property you edit in a details form, and letting this write it would
+ * be a second route past the cap in setProspect.
+ */
+export async function updateCompany(
+  supabase: SupabaseClient,
+  userId: string,
+  companyId: string,
+  input: CompanyInput,
+): Promise<Company> {
+  const fields = normalizeCompanyInput(input);
+
+  await assertNameIsFree(supabase, userId, fields.name, companyId);
+
+  const { data, error } = await supabase
+    .from("companies")
+    .update(fields)
+    .eq("id", companyId)
+    .select(COMPANY_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to save company: ${error.message}`);
+  }
+
+  // RLS turns "someone else's company" into zero rows updated rather than
+  // an error, so an empty result here is the case worth naming out loud.
+  if (!data) {
+    throw new Error("That company no longer exists.");
   }
 
   return data as Company;

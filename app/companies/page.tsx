@@ -2,8 +2,8 @@ import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { listCompaniesForUser, MAX_PROSPECTS } from "@/lib/companies";
 import AppNav from "@/components/AppNav";
+import CompanyList from "@/components/CompanyList";
 import NewCompanyForm from "@/components/NewCompanyForm";
-import ProspectToggle from "@/components/ProspectToggle";
 import TerminalShell from "@/components/TerminalShell";
 
 // The company list: everything you have ever spoken to, and the place you
@@ -82,45 +82,7 @@ export default async function CompaniesPage() {
       {/* The scrolling region. min-h-0 is what lets it shrink below its own
           content instead of pushing the add form off the bottom. */}
       <div className="scroll-pane mt-5 min-h-0 flex-1 overflow-y-auto rounded border border-line">
-        {companies.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted">
-            No companies yet. Add the first one below.
-          </p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {companies.map((company) => {
-              const picked = Boolean(company.prospect_since);
-
-              return (
-                <li
-                  key={company.id}
-                  className={`flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-background/40 ${
-                    picked ? "border-l-2 border-l-accent" : ""
-                  }`}
-                >
-                  <Link
-                    href={`/?company=${company.id}`}
-                    className="group min-w-0 flex-1"
-                  >
-                    <span className="block truncate text-sm font-medium text-foreground group-hover:text-accent">
-                      {company.name}
-                    </span>
-                    <span className="mt-0.5 block font-mono text-xs text-dim">
-                      {company.deal_count} deals · {company.contact_count}{" "}
-                      contacts
-                    </span>
-                  </Link>
-
-                  <ProspectToggle
-                    companyId={company.id}
-                    picked={picked}
-                    slotsFull={slotsFull}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <CompanyList companies={companies} slotsFull={slotsFull} />
       </div>
 
       <div className="shrink-0">

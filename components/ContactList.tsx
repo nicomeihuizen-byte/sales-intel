@@ -10,8 +10,9 @@ import {
 } from "@/app/actions";
 import ConfidentialToggle from "@/components/ConfidentialToggle";
 import EmailPanel from "@/components/EmailPanel";
+import MultiField from "@/components/MultiField";
 import NoteBody, { noteLabel } from "@/components/NoteBody";
-import { mailtoHref, profileHref, telHref } from "@/lib/links";
+import { mailtoHref, profileHref, socialLabel, telHref } from "@/lib/links";
 import { useActionSuccess } from "@/lib/useActionSuccess";
 import type { Contact, Deal, Note } from "@/lib/types";
 
@@ -20,54 +21,7 @@ const initialState: FormState = { error: null };
 const TEXT_FIELDS = [
   { name: "name", label: "Name", type: "text", required: true },
   { name: "role", label: "Role", type: "text", required: false },
-  { name: "linkedinUrl", label: "LinkedIn", type: "text", required: false },
 ] as const;
-
-/**
- * A repeating field: one input per value, plus a spare empty one so there
- * is always somewhere to type the next address without pressing anything
- * first. Blank rows are dropped server-side, so the spare costs nothing.
- */
-function MultiField({
-  name,
-  label,
-  type,
-  values,
-}: {
-  name: string;
-  label: string;
-  type: string;
-  values: string[];
-}) {
-  const [rows, setRows] = useState<string[]>(
-    values.length > 0 ? [...values, ""] : [""],
-  );
-
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="font-mono text-xs text-muted">{label}</span>
-      {rows.map((value, index) => (
-        <input
-          // Index-keyed because the list is positional: a row's identity
-          // here is "the nth box", and rows are only ever appended.
-          key={`${name}-${index}`}
-          name={name}
-          type={type}
-          defaultValue={value}
-          aria-label={`${label} ${index + 1}`}
-          className="rounded border border-line bg-background px-2 py-1.5 font-sans text-sm text-foreground outline-none focus:border-accent"
-        />
-      ))}
-      <button
-        type="button"
-        onClick={() => setRows((current) => [...current, ""])}
-        className="self-start font-mono text-xs text-dim transition-colors hover:text-accent"
-      >
-        {`+ another ${label.toLowerCase()}`}
-      </button>
-    </div>
-  );
-}
 
 function ContactFields({
   formAction,
@@ -87,7 +41,6 @@ function ContactFields({
   const defaults: Record<string, string> = {
     name: contact?.name ?? "",
     role: contact?.role ?? "",
-    linkedinUrl: contact?.linkedin_url ?? "",
   };
 
   return (
@@ -119,6 +72,17 @@ function ContactFields({
         label="Phone"
         type="tel"
         values={contact?.phones ?? []}
+      />
+      {/* One box called LinkedIn was a schema arguing with the person
+          filling it in, and they win by pasting an X profile into it. The
+          network is read off the URL instead, so the label is always true
+          of the value under it. */}
+      <MultiField
+        name="socials"
+        label="Social"
+        type="text"
+        values={contact?.socials ?? []}
+        placeholder="linkedin.com/in/... or x.com/..."
       />
 
       {state.error && (
@@ -168,19 +132,55 @@ function ContactDetails({ contact }: { contact: Contact }) {
       })),
     ];
 
-  if (contact.linkedin_url) {
-    rows.push({
-      label: "li",
-      value: contact.linkedin_url,
-      href: profileHref(contact.linkedin_url),
-      external: true,
-    });
-  }
-
   return (
     <>
       <p className="text-sm font-medium text-foreground">{contact.name}</p>
       {contact.role && <p className="text-xs text-muted">{contact.role}</p>}
+
+      {/* Socials sit apart from the addresses and phone numbers, as named
+          chips rather than rows.
+
+          A profile URL is long and carries no information you can read at
+          a glance - `linkedin.com/in/nico-meihuizen-1a2b3c4` in a pane this
+          narrow is a line of noise that tells you only "LinkedIn". So the
+          name is the link and the URL is the title attribute, which puts
+          four profiles on one line where four rows would have cost four.
+          The name is read off the URL (socialLabel), so it cannot disagree
+          with where the link actually goes. */}
+      {contact.socials.length > 0 && (
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {contact.socials.map((social) => {
+            const href = profileHref(social);
+            const label = socialLabel(social);
+
+            return (
+              <li key={social}>
+                {href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={social}
+                    className="inline-block rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-accent2 transition-colors hover:border-accent2"
+                  >
+                    {label}
+                  </a>
+                ) : (
+                  // Not a URL - an @handle, most likely. Still worth
+                  // showing, just not as something to click.
+                  <span
+                    title={social}
+                    className="inline-block rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted"
+                  >
+                    {label}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       {rows.length > 0 && (
         <dl className="mt-2 flex flex-col gap-0.5">
           {rows.map((row) => (

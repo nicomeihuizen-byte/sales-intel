@@ -12,6 +12,30 @@ export interface Company {
   // prospects list has a stable order and can say how long each one has
   // been sitting there without moving.
   prospect_since: string | null;
+  // Everything below is optional by design. A prospect starts as a name
+  // heard on a call, and the rest arrives over the following weeks. Null
+  // means "not filled in", never "none": the panel prints nothing for a
+  // null rather than a dash, because a dash reads like an answer.
+  //
+  // One free-text address rather than street/postcode/city broken out.
+  // Addresses get pasted in as a block, and nothing here sorts on the
+  // parts. `country` is separate because it is the one part used on its
+  // own: it decides the VAT treatment.
+  address: string | null;
+  country: string | null;
+  // Stored with the scheme already on the front (see normalizeCompanyInput),
+  // so rendering a link never has to guess and anything that will not parse
+  // into a safe URL is refused at the form rather than silently dropped at
+  // the anchor.
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+  // Same list, and the same reasoning, as `socials` on Contact below.
+  socials: string[];
+  // Two registries, two numbers, two documents: VAT goes on the quote, the
+  // registration number (KvK, HRB, Companies House) goes on the contract.
+  vat_number: string | null;
+  registration_number: string | null;
 }
 
 export type DealStatus = "open" | "won" | "lost";
@@ -94,7 +118,12 @@ export interface Contact {
   // so callers never have to check both "missing" and "empty".
   emails: string[];
   phones: string[];
-  linkedin_url: string | null;
+  // Was one linkedin_url. A column named after one network is a schema
+  // that argues with the person filling it in, and they win by pasting an
+  // X profile into the LinkedIn box. The label is derived from the URL
+  // instead (socialLabel in lib/links.ts), so the data says which network
+  // it is rather than the column name claiming to.
+  socials: string[];
   created_at: string;
   updated_at: string;
 }

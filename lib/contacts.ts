@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { profileHref } from "./links";
 import type { Contact } from "./types";
 
 // Data-access layer for contacts. Same shape and the same Row Level
@@ -7,7 +8,7 @@ import type { Contact } from "./types";
 // (supabase/migrations) is what scopes it to the caller.
 
 const CONTACT_COLUMNS =
-  "id, company_id, user_id, name, role, emails, phones, linkedin_url, created_at, updated_at";
+  "id, company_id, user_id, name, role, emails, phones, socials, created_at, updated_at";
 
 /**
  * Every contact at one company, oldest first so the order stays stable as
@@ -35,7 +36,7 @@ export interface ContactInput {
   role?: string;
   emails?: string[];
   phones?: string[];
-  linkedinUrl?: string;
+  socials?: string[];
 }
 
 /**
@@ -73,7 +74,14 @@ function normalizeContactInput(input: ContactInput) {
     role: blankToNull(input.role),
     emails: cleanList(input.emails),
     phones: cleanList(input.phones),
-    linkedin_url: blankToNull(input.linkedinUrl),
+    // Normalized to full URLs on the way in, so the display side never has
+    // to guess a scheme and a pasted `linkedin.com/in/someone` is a
+    // working link rather than a dead one. Anything that will not parse
+    // into an http(s) URL is kept as typed - an @handle is a legitimate
+    // thing to write down, and lib/links.ts renders it as plain text.
+    socials: cleanList(input.socials).map(
+      (value) => profileHref(value) ?? value,
+    ),
   };
 }
 

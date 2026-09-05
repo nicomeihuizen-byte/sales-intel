@@ -20,6 +20,7 @@ import { listDealInsights } from "@/lib/insights";
 import { deleteCompanyAction } from "@/app/actions";
 import { destructiveActionsEnabled } from "@/lib/featureFlags";
 import AppNav from "@/components/AppNav";
+import CompanyDetailsButton from "@/components/CompanyDetailsButton";
 import ContactList from "@/components/ContactList";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import AnalyzeDealsButton from "@/components/AnalyzeDealsButton";
@@ -141,11 +142,25 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
   // which RLS makes indistinguishable) falls back to showing nothing
   // selected rather than a not-found page. A stale bookmark should land
   // you in the app, not on an error.
-  const [prospects, insights, selectedCompany] = await Promise.all([
+  const [prospects, insights, requestedCompany] = await Promise.all([
     listProspects(supabase),
     listDealInsights(supabase),
     companyId ? getCompanyById(supabase, companyId) : Promise.resolve(null),
   ]);
+
+  // The desk only shows companies that are in your five, and a company
+  // that is not picked reads here as nothing selected.
+  //
+  // Before this line, any company id in the URL would load its contacts
+  // and deals into the middle and right panes while the left pane - which
+  // only ever lists the five - had nothing highlighted. The result was a
+  // set of contacts sitting on the desk with nothing on screen saying
+  // whose they were. That is not a company the desk is showing badly, it
+  // is a company the desk has no place for: the five are the desk, and
+  // anything else belongs on /companies, which is now where you read it.
+  const selectedCompany = requestedCompany?.prospect_since
+    ? requestedCompany
+    : null;
 
   // Wave two: needs the selected company, and hands the metrics panel the
   // insights we already have so it does not fetch them a second time.
@@ -382,26 +397,37 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                 notesByContact={notesByContact}
                 noteCountsByContact={contactNoteCounts}
                 headerAction={
-                  canDelete && companyContents ? (
-                    // The key is not decoration and must not be tidied
-                    // away. This element is created here, in a Server
-                    // Component, and ends up beside "+ add" in a two-item
-                    // child array inside ContactList. React counts that as
-                    // a list and asks every entry for a key, and an
-                    // element serialized across the server boundary cannot
-                    // borrow the static-children shortcut that normally
-                    // exempts hand-written JSX.
-                    <ConfirmDeleteButton
-                      key="remove-company"
-                      action={deleteCompanyAction}
-                      hiddenFields={{ companyId: selectedCompany.id }}
-                      label="remove company"
-                      confirmLabel={describeCompanyDelete(
-                        selectedCompany.name,
-                        companyContents,
-                      )}
+                  // The keys are not decoration and must not be tidied
+                  // away. These elements are created here, in a Server
+                  // Component, and end up beside "+ add" in a child array
+                  // inside ContactList. React counts that as a list and
+                  // asks every entry for a key, and an element serialized
+                  // across the server boundary cannot borrow the
+                  // static-children shortcut that exempts hand-written
+                  // JSX.
+                  <>
+                    {/* The desk has no company title of its own, so this
+                        is also the only place on this screen that shows
+                        the address and the two registry numbers. It is
+                        the same panel as on /companies, deliberately:
+                        details read one way in one place. */}
+                    <CompanyDetailsButton
+                      key="company-details"
+                      company={selectedCompany}
                     />
-                  ) : null
+                    {canDelete && companyContents ? (
+                      <ConfirmDeleteButton
+                        key="remove-company"
+                        action={deleteCompanyAction}
+                        hiddenFields={{ companyId: selectedCompany.id }}
+                        label="remove company"
+                        confirmLabel={describeCompanyDelete(
+                          selectedCompany.name,
+                          companyContents,
+                        )}
+                      />
+                    ) : null}
+                  </>
                 }
               />
             </>

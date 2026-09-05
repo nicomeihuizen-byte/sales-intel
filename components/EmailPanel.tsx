@@ -140,22 +140,33 @@ function WriteMyself({
   contact,
   deals,
   defaultDealId,
-  onDone,
+  state,
+  formAction,
+  isPending,
+  onCancel,
 }: {
   contact: Contact;
   deals: Deal[];
   defaultDealId: string | null;
-  onDone: () => void;
+  /**
+   * The action state is owned by EmailPanel and handed down, the way
+   * ContactFields and CompanyFields take theirs.
+   *
+   * It used to be created here, and this component called `onDone()` -
+   * which is EmailPanel's `setIsWriting(false)` - from inside render, via
+   * useActionSuccess. React refuses that, and is right to: a component may
+   * adjust its OWN state during render, but writing to a different
+   * component's state mid-render leaves the two disagreeing about what has
+   * already been drawn. Hoisting the state to the component that owns the
+   * visibility removes the cross-component write rather than deferring it
+   * into an effect, which would only have hidden the same mistake behind
+   * an extra render pass.
+   */
+  state: FormState;
+  formAction: (formData: FormData) => void;
+  isPending: boolean;
+  onCancel: () => void;
 }) {
-  const [state, formAction, isPending] = useActionState(
-    logEmailAction.bind(null, contact.id),
-    initialState,
-  );
-
-  if (useActionSuccess(state)) {
-    onDone();
-  }
-
   return (
     <form action={formAction} className="mt-3 flex flex-col gap-2">
       <DealSelect
@@ -211,7 +222,7 @@ function WriteMyself({
         <FileButtons disabled={isPending} />
         <button
           type="button"
-          onClick={onDone}
+          onClick={onCancel}
           className="font-mono text-xs text-muted hover:text-accent"
         >
           cancel
@@ -258,6 +269,13 @@ export default function EmailPanel({
     logEmailAction.bind(null, contact.id),
     initialState,
   );
+  // A second, separate state for the paste form. Same action, different
+  // submission: an error filing a pasted email must not blank the draft
+  // sitting in the other half of the panel, and vice versa.
+  const [pasteState, pasteAction, isPasting] = useActionState(
+    logEmailAction.bind(null, contact.id),
+    initialState,
+  );
   const [isWriting, setIsWriting] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   // Sticky rather than the single render useActionSuccess returns: the
@@ -265,6 +283,18 @@ export default function EmailPanel({
   const [hasLogged, setHasLogged] = useState(false);
 
   if (useActionSuccess(logState)) {
+    setHasLogged(true);
+  }
+
+  // Closing the paste form lives here, in the component that owns whether
+  // it is open, rather than in the form itself.
+  //
+  // And it says so afterwards. A form that files the email and then just
+  // vanishes leaves you looking at two buttons wondering whether it
+  // worked, which on the one screen whose job is "put this on the record"
+  // is the wrong thing to be unsure about.
+  if (useActionSuccess(pasteState)) {
+    setIsWriting(false);
     setHasLogged(true);
   }
 
@@ -328,12 +358,21 @@ export default function EmailPanel({
         </p>
       )}
 
+      {!isWriting && !state.draft && hasLogged && !pasteState.error && (
+        <p className="mt-2 font-mono text-[11px] text-dim">
+          Logged against this contact.
+        </p>
+      )}
+
       {isWriting && (
         <WriteMyself
           contact={contact}
           deals={deals}
           defaultDealId={defaultDealId}
-          onDone={() => setIsWriting(false)}
+          state={pasteState}
+          formAction={pasteAction}
+          isPending={isPasting}
+          onCancel={() => setIsWriting(false)}
         />
       )}
 

@@ -44,7 +44,7 @@ interface SeedContact {
   role: string;
   emails: string[];
   phones?: string[];
-  linkedinUrl?: string;
+  socials?: string[];
 }
 
 interface SeedCompany {
@@ -99,7 +99,7 @@ const SEED_DATA: SeedCompany[] = [
         role: "Operations Director",
         emails: ["p.shah@acmerobotics.example", "priya.shah@acme-group.example"],
         phones: ["+31 20 555 0142"],
-        linkedinUrl: "linkedin.com/in/example-priya-shah",
+        socials: ["linkedin.com/in/example-priya-shah"],
       },
       {
         name: "Tom Reyes",
@@ -285,7 +285,10 @@ const SEED_DATA: SeedCompany[] = [
         role: "Director of Data Platforms",
         emails: ["a.blom@meridian-global.example"],
         phones: ["+31 30 555 0199", "+31 6 1234 5678"],
-        linkedinUrl: "linkedin.com/in/example-anneke-blom",
+        socials: [
+          "linkedin.com/in/example-anneke-blom",
+          "x.com/example-anneke",
+        ],
       },
       {
         name: "Rahul Menon",
@@ -625,7 +628,7 @@ async function main(): Promise<void> {
         role: contact.role,
         emails: contact.emails,
         phones: contact.phones ?? [],
-        linkedin_url: contact.linkedinUrl ?? null,
+        socials: contact.socials ?? [],
       }));
 
       const { error: contactsError } = await supabase

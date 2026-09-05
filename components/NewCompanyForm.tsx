@@ -3,15 +3,24 @@
 import { useActionState, useState } from "react";
 import { useActionSuccess } from "@/lib/useActionSuccess";
 import { createCompanyAction, type FormState } from "@/app/actions";
+import CompanyFields from "@/components/CompanyFields";
+import Overlay from "@/components/Overlay";
 
 const initialState: FormState = { error: null };
 
 /**
- * Adds a company with no deal attached, from above the company list.
+ * Adds a company, from below the company list.
  *
- * Collapsed by default. The list is the thing you came to this pane to
- * read, and a permanently open form pushes it down the screen for the sake
- * of an action taken once a week.
+ * In an overlay rather than expanding in place, which is what it did while
+ * it was a single name box. Nine fields unfolding at the bottom of the
+ * page would either push the list off the screen or make the page scroll
+ * while you type, and the list is the thing you came here to read.
+ *
+ * Only the name is required. The rest of the form is there because the
+ * moment you first add a company is usually the moment you have the
+ * address and the VAT number in front of you, and making that a second
+ * trip through an edit panel is how a record ends up never being filled
+ * in at all.
  */
 export default function NewCompanyForm() {
   const [isOpen, setIsOpen] = useState(false);
@@ -20,14 +29,14 @@ export default function NewCompanyForm() {
     initialState,
   );
 
-  // Closing the form on success also clears it: the inputs unmount with
-  // it, so there is nothing left to reset by hand.
+  // Closing on success also clears it: the inputs unmount with the
+  // overlay, so there is nothing left to reset by hand.
   if (useActionSuccess(state)) {
     setIsOpen(false);
   }
 
-  if (!isOpen) {
-    return (
+  return (
+    <>
       <button
         type="button"
         onClick={() => setIsOpen(true)}
@@ -35,43 +44,32 @@ export default function NewCompanyForm() {
       >
         + add company
       </button>
-    );
-  }
 
-  return (
-    <form action={formAction} className="mt-3 flex flex-col gap-2">
-      <label className="flex flex-col gap-1 font-mono text-xs text-muted">
-        Company name
-        <input
-          name="name"
-          required
-          autoFocus
-          className="rounded border border-line bg-background px-2 py-1.5 font-sans text-sm text-foreground outline-none focus:border-accent"
-        />
-      </label>
+      {isOpen && (
+        <Overlay
+          label="Add a company"
+          onClose={() => setIsOpen(false)}
+          widthClassName="max-w-2xl"
+        >
+          <h3 className="font-display text-lg font-semibold text-foreground">
+            Add a company
+          </h3>
+          <p className="mt-1 text-sm text-muted">
+            The name is all that is required. The rest can wait until you have
+            it.
+          </p>
 
-      {state.error && (
-        <p role="alert" className="text-sm text-danger">
-          {state.error}
-        </p>
+          <div className="mt-4">
+            <CompanyFields
+              formAction={formAction}
+              state={state}
+              isPending={isPending}
+              submitLabel="Add"
+              onCancel={() => setIsOpen(false)}
+            />
+          </div>
+        </Overlay>
       )}
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={isPending}
-          className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {isPending ? "Adding..." : "Add"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setIsOpen(false)}
-          className="font-mono text-sm text-muted hover:text-accent"
-        >
-          cancel
-        </button>
-      </div>
-    </form>
+    </>
   );
 }

@@ -9,6 +9,8 @@ import {
   deleteCompany,
   listDealsForCompany,
   setProspect,
+  updateCompany,
+  type CompanyInput,
 } from "@/lib/companies";
 import {
   createNote,
@@ -45,7 +47,7 @@ export interface FormState {
 }
 
 /**
- * Reads the five contact fields off a FormData. Returns null when `name`
+ * Reads the contact fields off a FormData. Returns null when `name`
  * is missing or not a string, which is the only field the database
  * requires - the rest come back as undefined and lib/contacts.ts turns
  * them into nulls.
@@ -62,9 +64,9 @@ function contactInputFromForm(formData: FormData): ContactInput | null {
     return typeof value === "string" ? value : undefined;
   };
 
-  // getAll, because the form renders one input per address plus a spare
-  // empty one. lib/contacts.ts trims, drops the blanks and de-duplicates,
-  // so a submit carrying empty rows is normal input rather than an error.
+  // getAll, because these fields render one input per value.
+  // lib/contacts.ts trims, drops the blanks and de-duplicates, so a submit
+  // carrying an empty row is normal input rather than an error.
   const list = (field: string) =>
     formData.getAll(field).filter((value): value is string => typeof value === "string");
 
@@ -73,7 +75,46 @@ function contactInputFromForm(formData: FormData): ContactInput | null {
     role: optional("role"),
     emails: list("emails"),
     phones: list("phones"),
-    linkedinUrl: optional("linkedinUrl"),
+    socials: list("socials"),
+  };
+}
+
+/**
+ * Reads the company fields off a FormData. Same shape and same
+ * contract as contactInputFromForm above: null when there is no name at
+ * all, and undefined for every field the form did not carry, which
+ * lib/companies.ts turns into nulls.
+ */
+function companyInputFromForm(formData: FormData): CompanyInput | null {
+  const name = formData.get("name");
+
+  if (typeof name !== "string") {
+    return null;
+  }
+
+  const optional = (field: string) => {
+    const value = formData.get(field);
+    return typeof value === "string" ? value : undefined;
+  };
+
+  // getAll for the one repeating field, same as the contact form: the
+  // socials list arrives as several inputs sharing a name, and
+  // lib/companies.ts trims, drops the blanks and de-duplicates.
+  const list = (field: string) =>
+    formData
+      .getAll(field)
+      .filter((value): value is string => typeof value === "string");
+
+  return {
+    name,
+    address: optional("address"),
+    country: optional("country"),
+    website: optional("website"),
+    email: optional("email"),
+    phone: optional("phone"),
+    socials: list("socials"),
+    vatNumber: optional("vatNumber"),
+    registrationNumber: optional("registrationNumber"),
   };
 }
 
@@ -100,9 +141,9 @@ export async function createCompanyAction(
   _previousState: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const name = formData.get("name");
+  const input = companyInputFromForm(formData);
 
-  if (typeof name !== "string") {
+  if (!input) {
     return { error: "A company needs a name." };
   }
 
@@ -115,11 +156,52 @@ export async function createCompanyAction(
   const supabase = await createServerSupabaseClient();
 
   try {
-    await createCompany(supabase, userId, name);
+    await createCompany(supabase, userId, input);
   } catch (error) {
     return {
       error:
         error instanceof Error ? error.message : "Failed to create company.",
+    };
+  }
+
+  revalidateWorkspace();
+  return { error: null };
+}
+
+/**
+ * Saves the details on a company: address, the two registry numbers, the
+ * switchboard number, the rest.
+ *
+ * The id is bound by the caller rather than carried in the form body,
+ * matching updateContactAction, because this action is only ever reached
+ * from a panel that already knows which company it opened. RLS is what
+ * stops the id pointing at somebody else's row either way.
+ */
+export async function updateCompanyAction(
+  companyId: string,
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const input = companyInputFromForm(formData);
+
+  if (!input) {
+    return { error: "A company needs a name." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    await updateCompany(supabase, userId, companyId, input);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to save company.",
     };
   }
 
