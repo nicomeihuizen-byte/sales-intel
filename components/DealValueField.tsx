@@ -50,7 +50,7 @@ export default function DealValueField({
         type="button"
         onClick={() => setIsEditing(true)}
         title={value === null ? "Add a deal value" : "Change the deal value"}
-        className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-xs transition-colors hover:bg-white/5 hover:text-accent ${
+        className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-xs transition-colors hover:bg-foreground/5 hover:text-accent ${
           value === null ? "text-dim" : "text-muted"
         }`}
       >
@@ -88,7 +88,7 @@ export default function DealValueField({
         x
       </button>
       {state.error && (
-        <p role="alert" className="text-xs text-red-400">
+        <p role="alert" className="text-xs text-danger">
           {state.error}
         </p>
       )}

@@ -16,15 +16,19 @@ interface InsightPanelProps {
   dealStatus: DealStatus;
 }
 
-// Dark-theme badge colors. Each of the three result types keeps its own
-// distinct hue family so a glance at the badge alone tells you which kind
-// of read this is, not just what the verdict was - translucent fills and
-// bright text read cleanly against the app's dark background, unlike the
-// light-mode pastel fills these started as.
+// Badge colours, one token per meaning. Each of the three result types
+// keeps its own distinct hue family so a glance at the badge alone tells
+// you which kind of read this is, not just what the verdict was.
+//
+// The shape survives both themes because only the hue is named here and
+// the value comes from app/globals.css: a 10% fill under text of the same
+// hue reads on graphite and on white, as long as the hue itself is chosen
+// for the ground it is standing on. What does not survive is a hex written
+// in here, which is why there are none left.
 const MOMENTUM_STYLES: Record<DealMomentum, string> = {
-  healthy: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-  stalling: "bg-amber-500/10 text-amber-400 border-amber-500/30",
-  at_risk: "bg-red-500/10 text-red-400 border-red-500/30",
+  healthy: "bg-ok/10 text-ok border-ok/30",
+  stalling: "bg-warn/10 text-warn border-warn/30",
+  at_risk: "bg-danger/10 text-danger border-danger/30",
 };
 
 const MOMENTUM_LABEL: Record<DealMomentum, string> = {
@@ -34,7 +38,7 @@ const MOMENTUM_LABEL: Record<DealMomentum, string> = {
 };
 
 const LOSS_REVIEW_STYLES: Record<LossReviewVerdict, string> = {
-  confirmed_lost: "bg-white/5 text-muted border-line",
+  confirmed_lost: "bg-foreground/5 text-muted border-line",
   worth_revisiting: "bg-accent2/10 text-accent2 border-accent2/30",
 };
 
@@ -44,10 +48,10 @@ const LOSS_REVIEW_LABEL: Record<LossReviewVerdict, string> = {
 };
 
 const WIN_REVIEW_STYLES: Record<WinPattern, string> = {
-  fast_and_clean: "bg-violet-500/10 text-violet-400 border-violet-500/30",
-  steady_and_thorough: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
+  fast_and_clean: "bg-plum/10 text-plum border-plum/30",
+  steady_and_thorough: "bg-iris/10 text-iris border-iris/30",
   recovered_momentum:
-    "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/30",
+    "bg-magenta/10 text-magenta border-magenta/30",
 };
 
 const WIN_REVIEW_LABEL: Record<WinPattern, string> = {
@@ -253,7 +257,7 @@ export default function InsightPanel({
       </div>
 
       {error && (
-        <p role="alert" className="mt-3 text-sm text-red-400">
+        <p role="alert" className="mt-3 text-sm text-danger">
           {error}
         </p>
       )}

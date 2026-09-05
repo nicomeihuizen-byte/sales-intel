@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { revalidateWorkspace } from "@/lib/revalidate";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import {
@@ -25,7 +26,8 @@ import {
   parseEuroInput,
   updateDealValue,
 } from "@/lib/deals";
-import { destructiveActionsEnabled } from "@/lib/featureFlags";
+import { defaultTheme, destructiveActionsEnabled } from "@/lib/featureFlags";
+import { isTheme, THEME_COOKIE, THEME_COOKIE_MAX_AGE, type Theme } from "@/lib/theme";
 import {
   createContact,
   deleteContact,
@@ -492,6 +494,41 @@ export async function refreshPipelineAction(
     analyzed,
     failed,
   };
+}
+
+/**
+ * Remembers which theme you picked.
+ *
+ * Called from the toggle after it has already flipped the attribute on
+ * <html>, so this is only the persistence half: the colours changed the
+ * instant you clicked, and this is what makes them still be that way
+ * tomorrow. That split is why the toggle feels instant despite the choice
+ * living in a cookie on the server.
+ *
+ * `isTheme` runs again here even though the caller is our own component.
+ * A server action is an HTTP endpoint whether or not anything on the page
+ * points at it, and this value ends up in an attribute on <html>, so the
+ * argument is treated as untrusted input rather than as a parameter.
+ * Anything unrecognised falls back to the deployment default rather than
+ * erroring, since the worst case is a visitor with a strange cookie
+ * getting the theme they would have had anyway.
+ *
+ * Nothing is revalidated. The page on screen is already showing the new
+ * theme, and re-rendering the whole layout to change one attribute the
+ * browser has already changed is work with no visible result.
+ */
+export async function setThemeAction(theme: Theme): Promise<void> {
+  const cookieStore = await cookies();
+
+  cookieStore.set(THEME_COOKIE, isTheme(theme) ? theme : defaultTheme(), {
+    path: "/",
+    maxAge: THEME_COOKIE_MAX_AGE,
+    sameSite: "lax",
+    // Nothing in the browser needs to read this: the server stamps the
+    // attribute, and the toggle knows the current theme from the DOM.
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  });
 }
 
 export interface EmailDraftState {

@@ -128,7 +128,7 @@ function ContactFields({
       />
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-400">
+        <p role="alert" className="text-sm text-danger">
           {state.error}
         </p>
       )}
@@ -316,7 +316,7 @@ function EmailDraftPanel({
       )}
 
       {state.error && (
-        <p role="alert" className="mt-2 text-xs text-red-400">
+        <p role="alert" className="mt-2 text-xs text-danger">
           {state.error}
         </p>
       )}
@@ -393,7 +393,7 @@ function EmailDraftPanel({
           </div>
 
           {logState.error && (
-            <p role="alert" className="text-xs text-red-400">
+            <p role="alert" className="text-xs text-danger">
               {logState.error}
             </p>
           )}
@@ -479,7 +479,7 @@ function ContactNotes({
             className="rounded border border-line bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent"
           />
           {state.error && (
-            <p role="alert" className="text-xs text-red-400">
+            <p role="alert" className="text-xs text-danger">
               {state.error}
             </p>
           )}
@@ -566,7 +566,7 @@ function ContactRow({
         <>
           <ContactDetails contact={contact} />
           {deleteState.error && (
-            <p role="alert" className="mt-1 text-xs text-red-400">
+            <p role="alert" className="mt-1 text-xs text-danger">
               {deleteState.error}
             </p>
           )}
@@ -590,7 +590,7 @@ function ContactRow({
               <button
                 type="submit"
                 disabled={isDeleting}
-                className="font-mono text-xs text-dim transition-colors hover:text-red-400 disabled:opacity-50"
+                className="font-mono text-xs text-dim transition-colors hover:text-danger disabled:opacity-50"
               >
                 {isDeleting ? "removing..." : "remove"}
               </button>

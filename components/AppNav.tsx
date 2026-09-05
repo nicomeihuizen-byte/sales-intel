@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/app/login/actions";
+import ThemeToggle from "@/components/ThemeToggle";
 
 /**
  * The three workspace routes and the way out, in one place.
@@ -40,6 +41,15 @@ export default function AppNav({
           </Link>
         ),
       )}
+
+      {/* Between the routes and the way out, separated by a divider: it is
+          not a fourth place to go, and it is not logging out either. The
+          nav is the only chrome on every page, so a setting that belongs
+          to the whole app has nowhere better to live. */}
+      <span aria-hidden className="text-line">
+        |
+      </span>
+      <ThemeToggle />
 
       <form action={signOut}>
         <button

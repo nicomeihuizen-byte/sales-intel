@@ -43,7 +43,7 @@ export default function ConfirmDeleteButton({
           <button
             type="submit"
             disabled={isPending}
-            className="font-mono text-xs text-red-400 transition-opacity hover:opacity-80 disabled:opacity-50"
+            className="font-mono text-xs text-danger transition-opacity hover:opacity-80 disabled:opacity-50"
           >
             {isPending ? "removing..." : confirmLabel}
           </button>
@@ -59,7 +59,7 @@ export default function ConfirmDeleteButton({
         <button
           type="button"
           onClick={() => setIsConfirming(true)}
-          className="font-mono text-xs text-dim transition-colors hover:text-red-400"
+          className="font-mono text-xs text-dim transition-colors hover:text-danger"
         >
           {label}
         </button>
@@ -69,7 +69,7 @@ export default function ConfirmDeleteButton({
           or the feature being off) stays visible whichever state the
           button is in when the answer comes back. */}
       {state.error && (
-        <p role="alert" className="mt-1 text-xs text-red-400">
+        <p role="alert" className="mt-1 text-xs text-danger">
           {state.error}
         </p>
       )}

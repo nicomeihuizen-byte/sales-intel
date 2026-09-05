@@ -39,7 +39,7 @@ export default function ProspectToggle({
       <input type="hidden" name="picked" value={picked ? "false" : "true"} />
 
       {state.error && (
-        <span role="alert" className="font-mono text-xs text-red-400">
+        <span role="alert" className="font-mono text-xs text-danger">
           {state.error}
         </span>
       )}

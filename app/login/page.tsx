@@ -58,7 +58,7 @@ export default function LoginPage() {
         </label>
 
         {actionState.error && (
-          <p role="alert" className="text-sm text-red-400">
+          <p role="alert" className="text-sm text-danger">
             {actionState.error}
           </p>
         )}

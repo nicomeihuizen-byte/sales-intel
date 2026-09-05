@@ -20,9 +20,9 @@ import type {
 // panel uses, so a summary in this pane and the badge inside the overlay
 // read as the same statement rather than two.
 const MOMENTUM_STYLE: Record<DealMomentum, string> = {
-  healthy: "text-emerald-400",
-  stalling: "text-amber-400",
-  at_risk: "text-red-400",
+  healthy: "text-ok",
+  stalling: "text-warn",
+  at_risk: "text-danger",
 };
 
 const MOMENTUM_LABEL: Record<DealMomentum, string> = {
@@ -37,7 +37,7 @@ const MOMENTUM_LABEL: Record<DealMomentum, string> = {
 // that contradict each other, which is worse than either being wrong.
 const STATUS_STYLE: Record<DealStatus, string> = {
   open: "text-dim",
-  won: "text-emerald-400",
+  won: "text-ok",
   lost: "text-dim",
 };
 
@@ -92,7 +92,7 @@ function DealOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm sm:p-8"
+      className="fixed inset-0 z-40 flex justify-center overflow-y-auto bg-scrim p-4 backdrop-blur-sm sm:p-8"
       role="dialog"
       aria-modal="true"
       aria-label={`${deal.title} detail`}
@@ -102,7 +102,7 @@ function DealOverlay({
         }
       }}
     >
-      <div className="h-fit w-full max-w-4xl rounded-lg border border-line bg-raised p-6 shadow-[0_40px_90px_-40px_rgba(0,0,0,0.9)]">
+      <div className="h-fit w-full max-w-4xl rounded-lg border border-line bg-raised p-6 shadow-[var(--shadow-overlay)]">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2 className="font-display text-xl font-semibold text-foreground">

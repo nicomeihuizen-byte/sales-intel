@@ -31,7 +31,7 @@ export default function AnalyzeDealsButton({
   return (
     <div className="flex items-center gap-3">
       {state.error && (
-        <p role="alert" className="text-xs text-red-400">
+        <p role="alert" className="text-xs text-danger">
           {state.error}
         </p>
       )}

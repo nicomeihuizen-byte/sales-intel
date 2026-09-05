@@ -1,3 +1,5 @@
+import type { Theme } from "./theme";
+
 /**
  * Whether this deployment may delete deals and companies.
  *
@@ -48,4 +50,28 @@ export function destructiveActionsEnabled(): boolean {
  */
 export function caseStudyLinkEnabled(): boolean {
   return process.env.SHOW_CASE_STUDY_LINK?.trim().toLowerCase() !== "false";
+}
+
+/**
+ * Which theme a visitor with no cookie yet gets.
+ *
+ * Light unless `DEFAULT_THEME` says "dark", which is the same direction as
+ * caseStudyLinkEnabled and for the same reason: the hosted demo is the
+ * deployment that has to be right without anyone remembering to configure
+ * it, and light is what it opens in now, so that the demo and the case
+ * study page it is linked from are not the same picture twice.
+ *
+ * The local copy sets DEFAULT_THEME=dark. Forgetting to costs one glance
+ * at a light screen and one line in .env.local. The other direction fails
+ * the way bad defaults always do: the hosted demo would keep opening dark,
+ * nothing would look broken, and the change would silently not have
+ * happened on the only deployment anyone else sees.
+ *
+ * Only a default. Once the visitor touches the toggle, the cookie decides
+ * and this is never consulted again.
+ */
+export function defaultTheme(): Theme {
+  return process.env.DEFAULT_THEME?.trim().toLowerCase() === "dark"
+    ? "dark"
+    : "light";
 }

@@ -17,7 +17,7 @@ const STATUS_LABEL: Record<DealStatus, string> = {
 
 const STATUS_STYLE: Record<DealStatus, string> = {
   open: "text-accent2",
-  won: "text-emerald-400",
+  won: "text-ok",
   lost: "text-dim",
 };
 

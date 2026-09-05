@@ -20,7 +20,7 @@ const STATUS_LABEL: Record<DealStatus, string> = {
 // marked won reads as the same colour here as the analysis it will get.
 const STATUS_STYLE: Record<DealStatus, string> = {
   open: "text-accent",
-  won: "text-violet-400",
+  won: "text-plum",
   lost: "text-muted",
 };
 
@@ -68,7 +68,7 @@ export default function DealStatusPicker({
       </select>
 
       {state.error && (
-        <p role="alert" className="mt-1 text-xs text-red-400">
+        <p role="alert" className="mt-1 text-xs text-danger">
           {state.error}
         </p>
       )}

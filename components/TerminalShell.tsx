@@ -63,13 +63,20 @@ export default function TerminalShell({
         }
       >
         <div
-          className={`overflow-hidden rounded-lg border border-line bg-raised shadow-[0_30px_60px_-30px_rgba(0,0,0,0.6)] ${
+          className={`overflow-hidden rounded-lg border border-line bg-raised shadow-[var(--shadow-card)] ${
             fillViewport ? "flex min-h-0 flex-1 flex-col" : ""
           }`}
         >
+          {/* The Dutch flag as traffic lights. Red and blue are the flag's
+              own colours and stay fixed in both themes, because a flag
+              that changes shade with the interface is not a flag. The
+              white one gets a hairline in every theme: on the dark card it
+              is invisible against nothing, but on the light card it is
+              white on white, and a border it does not need in one theme
+              costs less than the same dot drawn two different ways. */}
           <div className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-3">
             <span className="h-2.5 w-2.5 rounded-full bg-[#AE1C28]" />
-            <span className="h-2.5 w-2.5 rounded-full bg-white" />
+            <span className="h-2.5 w-2.5 rounded-full border border-line bg-white" />
             <span className="h-2.5 w-2.5 rounded-full bg-[#21468B]" />
             {label && (
               <span className="ml-2 font-mono text-xs text-dim">{label}</span>

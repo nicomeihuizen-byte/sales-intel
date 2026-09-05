@@ -1,13 +1,33 @@
 @import "tailwindcss";
 
 /*
- * Terminal-inspired dark theme shared with the portfolio site
- * (meihuizen.ai/projects/ai-sales-deal-intelligence.html) - dark graphite surfaces,
- * a single terminal-green accent, monospace interface text. Keeping the
- * app in the same visual system as the case-study page it's linked from,
- * so a visitor clicking "Live demo" doesn't hit a jarring style change.
+ * Two themes, one set of names.
+ *
+ * Every colour in this app is a custom property here, and no component
+ * carries a raw hex. That is what makes a second theme a values swap
+ * rather than a fork: a component asks for `text-danger`, and which red
+ * that is depends on the ground it is standing on.
+ *
+ * Dark is the terminal palette this app started in, shared with the
+ * portfolio site's project pages. Light exists because the hosted demo
+ * opens in it, so the two things Nico shows people do not look like the
+ * same thing twice.
+ *
+ * `data-theme` is stamped on <html> by the server (app/layout.tsx) from a
+ * cookie, falling back to DEFAULT_THEME. Doing it server-side is the whole
+ * reason there is no flash of the wrong theme on load: the attribute is in
+ * the HTML before the first paint, not written by a script afterwards.
+ * The bare `:root` selector carries dark as well, so a document that
+ * somehow arrives without the attribute still renders a complete theme
+ * rather than an unstyled one.
  */
-:root {
+:root,
+:root[data-theme="dark"] {
+  /* Tells the browser which way its own widgets go: scrollbars, form
+     controls, the canvas behind an overscroll. Without it a light
+     scrollbar appears beside a dark page. */
+  color-scheme: dark;
+
   --background: #10121a;
   --raised: #171a24;
   --foreground: #ecedf3;
@@ -17,6 +37,92 @@
   --accent: #5fbf8e;
   --accent-dim: #2e6b52;
   --accent2: #5fa8d3;
+
+  /*
+   * Status colours. Separate from --accent on purpose: the accent is the
+   * app's own voice and appears on buttons that are always there, while
+   * these carry meaning and appear only when that meaning applies. Status
+   * is never carried by colour alone anywhere in this app - the health
+   * meter shows the number and the word, the insight badges show the
+   * classification as text.
+   */
+  --ok: #10b981;
+  --warn: #f59e0b;
+  --danger: #f87171;
+
+  /* The three win patterns, which are categories rather than a scale, so
+     they need separation from each other rather than an order. */
+  --plum: #a78bfa;
+  --iris: #818cf8;
+  --magenta: #e879f9;
+
+  /* The dimming behind a modal overlay. */
+  --scrim: rgba(0, 0, 0, 0.7);
+
+  /* The two washes on the page background, and the drop shadows. Both are
+     theme-dependent in a way that is easy to miss: a shadow tuned for a
+     dark ground is nearly invisible on white, and one tuned for white is
+     a smear on graphite. */
+  --glow-a: rgba(232, 179, 74, 0.07);
+  --glow-b: rgba(95, 168, 211, 0.06);
+  --shadow-card: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  --shadow-overlay: 0 40px 90px -40px rgba(0, 0, 0, 0.9);
+}
+
+/*
+ * Light.
+ *
+ * Not the dark palette inverted. Inverting produces grey text on grey
+ * panels, because the dark theme's separation comes from raised surfaces
+ * being lighter than the page, and on a light ground the raised surface
+ * has to go the other way: the page is off-white and the cards are pure
+ * white, so a pane still reads as sitting on top of something.
+ *
+ * The greens are the two additions recorded in the brand notes for light
+ * grounds: #1f7d55 as the accent, #9fc4b1 for the quiet borders that were
+ * dark green on graphite. The terminal green (#5fbf8e) is not reused here
+ * - it is a colour designed to glow, and it goes chalky on white.
+ *
+ * Every status colour is a darker, less saturated cousin of its dark-theme
+ * twin, because the dark ones are tuned to sit on graphite and all of them
+ * fail contrast on white. Amber is the worst offender and moved furthest.
+ *
+ * The numbers were checked rather than eyeballed, against the two grounds
+ * each colour actually stands on: the white card, and the 10% tint of
+ * itself that the insight badges fill with. Everything here clears 4.5:1
+ * on both, including --dim, which carries 11px timestamps and so gets held
+ * to small-text contrast rather than the large-text exemption. That is one
+ * place light is stricter than dark, where --dim has never passed.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --background: #f4f6f8;
+  --raised: #ffffff;
+  --foreground: #14161c;
+  --line: #dfe3ea;
+  --muted: #596074;
+  --dim: #666d80;
+  --accent: #1f7d55;
+  --accent-dim: #9fc4b1;
+  --accent2: #2b6f9c;
+
+  --ok: #0f7a52;
+  --warn: #a84d08;
+  --danger: #c02626;
+
+  --plum: #6d28d9;
+  --iris: #4338ca;
+  --magenta: #a21caf;
+
+  /* Near-black rather than black, and much lighter: a 70% black scrim over
+     a white page reads as the lights going out. */
+  --scrim: rgba(20, 22, 28, 0.45);
+
+  --glow-a: rgba(232, 179, 74, 0.14);
+  --glow-b: rgba(95, 168, 211, 0.12);
+  --shadow-card: 0 24px 48px -32px rgba(20, 22, 28, 0.28);
+  --shadow-overlay: 0 40px 90px -45px rgba(20, 22, 28, 0.4);
 }
 
 @theme inline {
@@ -29,6 +135,13 @@
   --color-accent: var(--accent);
   --color-accent-dim: var(--accent-dim);
   --color-accent2: var(--accent2);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-plum: var(--plum);
+  --color-iris: var(--iris);
+  --color-magenta: var(--magenta);
+  --color-scrim: var(--scrim);
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
   --font-display: var(--font-space-grotesk);
@@ -38,8 +151,8 @@ body {
   min-height: 100vh;
   background: var(--background);
   background-image:
-    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(232, 179, 74, 0.07), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 100% 10%, rgba(95, 168, 211, 0.06), transparent 60%);
+    radial-gradient(ellipse 900px 500px at 15% -10%, var(--glow-a), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 10%, var(--glow-b), transparent 60%);
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
 }
@@ -47,6 +160,26 @@ body {
 ::selection {
   background: var(--accent);
   color: var(--background);
+}
+
+/*
+ * The theme toggle's own label.
+ *
+ * The button says where it will take you, not where you are, so it reads
+ * "light" while you are in dark. Both words are in the HTML and CSS hides
+ * one, rather than React choosing which to render: the server has already
+ * decided the theme, and a client component that picks its own label from
+ * the DOM would either need an effect (which this repo's lint config
+ * treats as an error in the setState case) or risk saying the wrong word
+ * for one frame. This way the label is correct in the first paint, is
+ * correct again the instant the attribute flips, and costs no JavaScript.
+ */
+:root[data-theme="light"] .theme-label-dark {
+  display: none;
+}
+
+:root:not([data-theme="light"]) .theme-label-light {
+  display: none;
 }
 
 /*
@@ -85,4 +218,3 @@ body {
 .scroll-pane::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
 }
-

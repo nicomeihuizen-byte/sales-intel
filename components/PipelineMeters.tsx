@@ -15,19 +15,25 @@ const initialRefreshState: RefreshState = {
 };
 
 /**
- * Status colours for the health meter, validated against this app's dark
- * surface: chroma, contrast, CVD separation and normal-vision separation
- * all pass. They deliberately sit outside the "categorical lightness band"
- * a palette checker wants, because these are status colours shown one at a
- * time, not series that have to look equally weighted side by side.
+ * Status colours for the health meter. Both halves of each band point at
+ * the same token, so the bar and the word beside it cannot drift apart the
+ * way a hex written twice always eventually does.
+ *
+ * The values themselves live in app/globals.css and differ per theme,
+ * because the dark set was validated against graphite and every one of
+ * them fails contrast on white - amber worst of all. Chroma, contrast, CVD
+ * separation and normal-vision separation pass in both sets. They
+ * deliberately sit outside the "categorical lightness band" a palette
+ * checker wants, because these are status colours shown one at a time, not
+ * series that have to look equally weighted side by side.
  *
  * Status is never carried by colour alone here: the meter always shows the
  * number and the word next to the bar.
  */
 const HEALTH_BANDS = [
-  { floor: 75, label: "Healthy", fill: "#10b981", text: "text-[#10b981]" },
-  { floor: 45, label: "Slowing", fill: "#f59e0b", text: "text-[#f59e0b]" },
-  { floor: 0, label: "At risk", fill: "#ef4444", text: "text-[#ef4444]" },
+  { floor: 75, label: "Healthy", fill: "var(--ok)", text: "text-ok" },
+  { floor: 45, label: "Slowing", fill: "var(--warn)", text: "text-warn" },
+  { floor: 0, label: "At risk", fill: "var(--danger)", text: "text-danger" },
 ] as const;
 
 function bandFor(score: number) {
@@ -86,7 +92,7 @@ function HealthMeter({ metrics }: { metrics: PipelineMetrics }) {
 
       {/* 6px track, 4px rounded ends, fill anchored at the left baseline. */}
       <div
-        className="mt-2 h-1.5 w-full overflow-hidden rounded bg-white/10"
+        className="mt-2 h-1.5 w-full overflow-hidden rounded bg-line"
         role="meter"
         aria-valuenow={healthScore}
         aria-valuemin={0}
@@ -167,7 +173,7 @@ export default function PipelineMeters({
         <h2 className="font-mono text-sm text-accent2">{"// pipeline"}</h2>
         <div className="flex items-center gap-3">
           {state.error && (
-            <p role="alert" className="text-xs text-red-400">
+            <p role="alert" className="text-xs text-danger">
               {state.error}
             </p>
           )}

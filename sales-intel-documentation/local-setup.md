@@ -48,18 +48,26 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<the anon key it printed>
 ANTHROPIC_API_KEY=<your real key, same as before>
 ```
 
-Add one more line, which only ever belongs in the local file:
+Add two more lines, which only ever belong in the local file:
 
 ```
 ALLOW_DESTRUCTIVE_ACTIONS=true
+DEFAULT_THEME=dark
 ```
 
-That turns on removing deals and companies. It stays off on the hosted
+The first turns on removing deals and companies. It stays off on the hosted
 demo, which is a public page with a one-click login, so a delete button
 there is a stranger emptying your showcase. The flag is read by the server
 actions, not just by the code that draws the buttons, because hiding a
 button hides nothing: a server action is an HTTP endpoint whether or not
 anything on the page points at it.
+
+The second decides which theme opens before anyone touches the toggle in
+the nav. Local is dark, the hosted demo is light, and the demo needs no
+setting at all for that: the default is light precisely so that forgetting
+to configure the deployment other people look at cannot silently undo the
+change. Once a visitor uses the toggle, their cookie decides and this
+value is never read again.
 
 Leave `SEED_DEMO_EMAIL` and `SEED_DEMO_PASSWORD` out of the local file
 entirely. They exist for the hosted demo. Not having them here is one more
