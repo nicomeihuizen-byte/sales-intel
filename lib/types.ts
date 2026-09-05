@@ -65,6 +65,15 @@ export interface Note {
   direction: NoteDirection | null;
   user_id: string;
   content: string;
+  // Kept out of every prompt, and never sent to the model in any form.
+  // Still fully visible in the app: this is not a lock on your own
+  // record, it is a line the record does not cross on its way out.
+  //
+  // The cost is deliberate and was chosen with eyes open: momentum is read
+  // from the gaps between notes, so marking one makes the deal look
+  // quieter than it was on that date. The timeline badges it so the gap
+  // has a visible explanation rather than looking like silence.
+  confidential: boolean;
   created_at: string;
   // Set on every edit. created_at is what the timeline and the AI's gap
   // reasoning use, so editing a note never changes where it sits in the

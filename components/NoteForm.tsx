@@ -45,13 +45,27 @@ export default function NoteForm({ dealId }: NoteFormProps) {
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={isPending}
-        className="self-start rounded bg-accent px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        {isPending ? "Saving..." : "Add note"}
-      </button>
+      <div className="flex flex-wrap items-center gap-4">
+        <button
+          type="submit"
+          disabled={isPending}
+          className="rounded bg-accent px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {isPending ? "Saving..." : "Add note"}
+        </button>
+
+        {/* Markable here as well as afterwards. A note you already know is
+            sensitive should not have to exist as an ordinary one first,
+            even briefly. */}
+        <label className="flex items-center gap-2 font-mono text-xs text-dim">
+          <input
+            type="checkbox"
+            name="confidential"
+            className="accent-[var(--accent)]"
+          />
+          keep out of the analysis
+        </label>
+      </div>
     </form>
   );
 }

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { useActionSuccess } from "@/lib/useActionSuccess";
 import { updateNoteAction, type NoteActionState } from "@/app/deals/actions";
+import ConfidentialToggle from "@/components/ConfidentialToggle";
 import NoteBody, { noteLabel } from "@/components/NoteBody";
 import type { Note } from "@/lib/types";
 
@@ -116,6 +117,13 @@ function NoteRow({ note }: { note: Note }) {
         >
           edit
         </button>
+        {/* The badge sits on the timeline rather than only in a settings
+            panel somewhere, because it is the explanation for a gap. A
+            confidential note is invisible to the momentum read, so the
+            deal looks quieter on that date than it actually was, and
+            without a visible marker that reads as silence you cannot
+            account for. */}
+        <ConfidentialToggle note={note} />
       </div>
     </li>
   );

@@ -8,6 +8,7 @@ import {
   updateContactAction,
   type FormState,
 } from "@/app/actions";
+import ConfidentialToggle from "@/components/ConfidentialToggle";
 import EmailPanel from "@/components/EmailPanel";
 import NoteBody, { noteLabel } from "@/components/NoteBody";
 import { mailtoHref, profileHref, telHref } from "@/lib/links";
@@ -287,7 +288,7 @@ function ContactNotes({
               {state.error}
             </p>
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
               disabled={isPending}
@@ -302,6 +303,14 @@ function ContactNotes({
             >
               cancel
             </button>
+            <label className="flex items-center gap-2 font-mono text-[11px] text-dim">
+              <input
+                type="checkbox"
+                name="confidential"
+                className="accent-[var(--accent)]"
+              />
+              keep out of the analysis
+            </label>
           </div>
         </form>
       )}
@@ -318,11 +327,14 @@ function ContactNotes({
                   the pane's fixed height is the thing that stops the whole
                   desk moving when you click between companies. */}
               <NoteBody note={note} className="text-xs text-foreground" />
-              <p className="mt-1 font-mono text-[11px] text-dim">
-                {new Date(note.created_at).toLocaleDateString()}
-                {noteLabel(note) ? ` · ${noteLabel(note)}` : ""}
-                {note.deal_id ? " · on a deal" : ""}
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <p className="font-mono text-[11px] text-dim">
+                  {new Date(note.created_at).toLocaleDateString()}
+                  {noteLabel(note) ? ` · ${noteLabel(note)}` : ""}
+                  {note.deal_id ? " · on a deal" : ""}
+                </p>
+                <ConfidentialToggle note={note} compact />
+              </div>
             </li>
           ))}
         </ul>

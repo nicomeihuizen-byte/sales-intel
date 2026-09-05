@@ -77,7 +77,11 @@ export async function createNoteAction(
   }
 
   try {
-    await createNote(supabase, user.id, { dealId, content });
+    await createNote(supabase, user.id, {
+      dealId,
+      content,
+      confidential: formData.get("confidential") === "on",
+    });
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Failed to add note.",

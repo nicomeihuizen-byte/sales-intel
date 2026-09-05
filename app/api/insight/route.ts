@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { getDealById } from "@/lib/deals";
-import { listNotesForDeal } from "@/lib/notes";
+import { listNotesForAnalysis } from "@/lib/notes";
 import { analyzeDealMomentum, reviewLostDeal, reviewWonDeal } from "@/lib/ai";
 import { forgetDealInsight, recordDealInsight } from "@/lib/insights";
 
@@ -64,7 +64,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const notes = await listNotesForDeal(supabase, deal.id);
+    // listNotesForAnalysis, never listNotesForDeal: confidential notes
+    // are excluded here and in the three other prompt paths, and that
+    // exclusion lives in one function on purpose.
+    const notes = await listNotesForAnalysis(supabase, deal.id);
 
     // A closed deal drops whatever momentum reading it had. Leaving a
     // stale "healthy" behind would keep it feeding the pipeline health

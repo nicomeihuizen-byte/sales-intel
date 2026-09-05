@@ -6,7 +6,7 @@ import type { Note, NoteDirection, NoteKind } from "./types";
 // twice, the most memorable being a euro value that rendered as NaN
 // because only one of two queries had been taught about the column.
 export const NOTE_COLUMNS =
-  "id, deal_id, contact_id, kind, subject, direction, user_id, content, created_at, updated_at";
+  "id, deal_id, contact_id, kind, subject, direction, confidential, user_id, content, created_at, updated_at";
 
 // Data-access layer for notes (Phase 4). See lib/deals.ts for why this
 // lives here instead of inline in the route handlers and page components.
@@ -16,6 +16,10 @@ export const NOTE_COLUMNS =
  * timeline. Row Level Security on the `notes` table (supabase/migrations)
  * also confirms the deal belongs to the caller; this function doesn't
  * re-check ownership itself.
+ *
+ * **For display only. Never build a prompt from this.** It returns
+ * confidential notes, because their owner is allowed to read them. Every
+ * path that sends notes to the model uses listNotesForAnalysis below.
  */
 export async function listNotesForDeal(
   supabase: SupabaseClient,
@@ -53,6 +57,7 @@ export interface CreateNoteInput {
   kind?: NoteKind;
   subject?: string | null;
   direction?: NoteDirection | null;
+  confidential?: boolean;
 }
 
 /**
@@ -98,6 +103,7 @@ export async function createNote(
       kind,
       subject: kind === "email" ? (input.subject?.trim() || null) : null,
       direction: kind === "email" ? input.direction : null,
+      confidential: input.confidential ?? false,
       content,
     })
     .select(NOTE_COLUMNS)
@@ -115,6 +121,76 @@ export async function createNote(
 export interface UpdateNoteInput {
   noteId: string;
   content: string;
+}
+
+
+/**
+ * The notes on a deal that the model is allowed to see.
+ *
+ * **This is the only function any prompt-building path may call.** There
+ * are four of them - the Analyze button, the pipeline refresh, the
+ * per-company analyse, and the email drafter - and the whole design of
+ * this feature rests on that being one function rather than a `.eq()`
+ * added to four query builders. Three out of four would work perfectly,
+ * and the fourth would be a confidential line arriving inside a draft
+ * about to be sent to the person it was written about. Nothing on screen
+ * would look wrong.
+ *
+ * This project has shipped four bugs from one rule living in two places.
+ * That failure mode is normally worth a wasted afternoon. Here it is worth
+ * a customer.
+ *
+ * listNotesForDeal is still the display query and still returns
+ * everything, because a confidential note is not hidden from its owner.
+ */
+export async function listNotesForAnalysis(
+  supabase: SupabaseClient,
+  dealId: string,
+): Promise<Note[]> {
+  const { data, error } = await supabase
+    .from("notes")
+    .select(NOTE_COLUMNS)
+    .eq("deal_id", dealId)
+    .eq("confidential", false)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to load notes: ${error.message}`);
+  }
+
+  return (data ?? []) as Note[];
+}
+
+/**
+ * Marks a note confidential, or takes the mark off, and reports which deal
+ * it belongs to so the caller can decide what has gone stale.
+ *
+ * An id the caller does not own matches no rows under RLS rather than
+ * erroring, which surfaces as "no longer exists" - the same message a
+ * genuinely deleted note gives, and correct, since neither case should
+ * reveal whether the row is out there.
+ */
+export async function setNoteConfidential(
+  supabase: SupabaseClient,
+  noteId: string,
+  confidential: boolean,
+): Promise<Note> {
+  const { data, error } = await supabase
+    .from("notes")
+    .update({ confidential })
+    .eq("id", noteId)
+    .select(NOTE_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to update that note: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("That note no longer exists.");
+  }
+
+  return data as Note;
 }
 
 /**

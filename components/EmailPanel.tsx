@@ -194,6 +194,19 @@ function WriteMyself({
         </p>
       )}
 
+      {/* On the paste form and not on the draft one. A draft was written
+          by the model from notes it was already allowed to read, so there
+          is nothing to withhold from it; a pasted email is the case where
+          you know as you paste that it should never come back out. */}
+      <label className="flex items-center gap-2 font-mono text-[11px] text-dim">
+        <input
+          type="checkbox"
+          name="confidential"
+          className="accent-[var(--accent)]"
+        />
+        keep out of the analysis
+      </label>
+
       <div className="flex flex-wrap items-center gap-3">
         <FileButtons disabled={isPending} />
         <button

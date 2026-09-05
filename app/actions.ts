@@ -10,14 +10,19 @@ import {
   listDealsForCompany,
   setProspect,
 } from "@/lib/companies";
-import { createNote, isNoteDirection, listNotesForDeal } from "@/lib/notes";
+import {
+  createNote,
+  isNoteDirection,
+  listNotesForAnalysis,
+  setNoteConfidential,
+} from "@/lib/notes";
 import {
   analyzeDealMomentum,
   draftContactEmail,
   type ContactEmailDraft,
 } from "@/lib/ai";
 import { isDraftLanguage, type DraftLanguage } from "@/lib/draftLanguages";
-import { recordDealInsight } from "@/lib/insights";
+import { forgetDealInsight, recordDealInsight } from "@/lib/insights";
 import {
   createDealForCompany,
   deleteDeal,
@@ -469,7 +474,7 @@ export async function refreshPipelineAction(
 
   for (const deal of openDeals) {
     try {
-      const notes = await listNotesForDeal(supabase, deal.id);
+      const notes = await listNotesForAnalysis(supabase, deal.id);
       const insight = await analyzeDealMomentum(deal.title, notes);
       await recordDealInsight(
         supabase,
@@ -632,7 +637,7 @@ export async function draftEmailAction(
       );
     }
 
-    const notes = await listNotesForDeal(supabase, deal.id);
+    const notes = await listNotesForAnalysis(supabase, deal.id);
 
     const draft = await draftContactEmail(
       {
@@ -705,7 +710,11 @@ export async function createContactNoteAction(
   const supabase = await createServerSupabaseClient();
 
   try {
-    await createNote(supabase, userId, { contactId, content });
+    await createNote(supabase, userId, {
+      contactId,
+      content,
+      confidential: formData.get("confidential") === "on",
+    });
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Failed to add note.",
@@ -804,6 +813,10 @@ export async function logEmailAction(
       kind: "email",
       subject: typeof subject === "string" ? subject : null,
       direction,
+      // Marked at the moment of pasting rather than afterwards. A
+      // sensitive email that has to be filed first and flagged second
+      // spends the gap in between being an ordinary note.
+      confidential: formData.get("confidential") === "on",
     });
 
     revalidateWorkspace();
@@ -816,6 +829,69 @@ export async function logEmailAction(
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Failed to log the email.",
+    };
+  }
+}
+
+/**
+ * Marks one note confidential, or takes the mark off.
+ *
+ * Marking also **drops the deal's stored verdict**, which is the part
+ * worth explaining. The stored reasoning in `deal_insights` is text the
+ * model wrote while it could still see this note, and it often quotes the
+ * notes directly - so leaving it in place would leave a sentence derived
+ * from a confidential note sitting on the deals pane, which is exactly
+ * what the toggle is supposed to prevent. "Never show up in any analysis"
+ * has to include the analysis already on screen.
+ *
+ * The cost is that the deal reads "not analysed" and leaves the health
+ * meter until you press Analyze again. That is a visible, explicable cost;
+ * a quotation you thought you had withdrawn is not.
+ *
+ * Unmarking does not clear anything. Nothing has leaked, and the stored
+ * verdict is then only stale in the ordinary way every stored verdict is
+ * between analyses.
+ */
+export async function toggleNoteConfidentialAction(
+  noteId: string,
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  // The value to set travels in the form rather than bound into the
+  // action, so this reads like every other action in this file: a hidden
+  // field carrying what the button means. It also keeps the signature the
+  // shape useActionState actually calls, which is (state, formData).
+  const confidential = formData.get("confidential") === "on";
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    const note = await setNoteConfidential(supabase, noteId, confidential);
+
+    if (confidential && note.deal_id) {
+      // Swallowed like every other insight write in this file: the note is
+      // marked, which is what was asked for, and a stale cache row is not
+      // worth turning a successful action into a visible failure.
+      await forgetDealInsight(supabase, note.deal_id).catch(() => {});
+    }
+
+    revalidateWorkspace();
+
+    if (note.deal_id) {
+      revalidatePath(`/deals/${note.deal_id}`);
+    }
+
+    return { error: null };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to update that note.",
     };
   }
 }
@@ -867,7 +943,7 @@ export async function analyzeCompanyDealsAction(
 
   for (const deal of openDeals) {
     try {
-      const notes = await listNotesForDeal(supabase, deal.id);
+      const notes = await listNotesForAnalysis(supabase, deal.id);
       const insight = await analyzeDealMomentum(deal.title, notes);
       await recordDealInsight(
         supabase,
