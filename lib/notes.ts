@@ -1,8 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Note, NoteKind } from "./types";
+import type { Note, NoteDirection, NoteKind } from "./types";
 
-const NOTE_COLUMNS =
-  "id, deal_id, contact_id, kind, user_id, content, created_at, updated_at";
+// Exported for the same reason DEAL_COLUMNS and COMPANY_COLUMNS are: this
+// project has shipped four bugs caused by one column list written out
+// twice, the most memorable being a euro value that rendered as NaN
+// because only one of two queries had been taught about the column.
+export const NOTE_COLUMNS =
+  "id, deal_id, contact_id, kind, subject, direction, user_id, content, created_at, updated_at";
 
 // Data-access layer for notes (Phase 4). See lib/deals.ts for why this
 // lives here instead of inline in the route handlers and page components.
@@ -30,11 +34,25 @@ export async function listNotesForDeal(
   return (data ?? []) as Note[];
 }
 
+/**
+ * Narrows a form value to a direction.
+ *
+ * The value arrives from two submit buttons in one form, so it is
+ * attacker-controlled in the ordinary way any form field is. It reaches a
+ * database check constraint either way; this is what turns a would-be
+ * Postgres error into a decision made in TypeScript.
+ */
+export function isNoteDirection(value: unknown): value is NoteDirection {
+  return value === "outbound" || value === "inbound";
+}
+
 export interface CreateNoteInput {
   dealId?: string | null;
   contactId?: string | null;
   content: string;
   kind?: NoteKind;
+  subject?: string | null;
+  direction?: NoteDirection | null;
 }
 
 /**
@@ -61,13 +79,25 @@ export async function createNote(
     throw new Error("A note has to belong to a deal or a contact.");
   }
 
+  const kind: NoteKind = input.kind ?? "note";
+
+  // The database enforces this pair as well (notes_email_fields_check).
+  // It is checked here too so the failure is a sentence rather than a
+  // Postgres constraint name: an email with no direction is a caller bug,
+  // and the caller is the only one who can still fix it.
+  if (kind === "email" && !input.direction) {
+    throw new Error("An email has to be recorded as sent or received.");
+  }
+
   const { data, error } = await supabase
     .from("notes")
     .insert({
       user_id: userId,
       deal_id: dealId,
       contact_id: contactId,
-      kind: input.kind ?? "note",
+      kind,
+      subject: kind === "email" ? (input.subject?.trim() || null) : null,
+      direction: kind === "email" ? input.direction : null,
       content,
     })
     .select(NOTE_COLUMNS)

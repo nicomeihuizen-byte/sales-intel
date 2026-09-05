@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import DealStatusPicker from "@/components/DealStatusPicker";
 import DealValueField from "@/components/DealValueField";
 import NoteList from "@/components/NoteList";
 import NoteForm from "@/components/NoteForm";
 import InsightPanel from "@/components/InsightPanel";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
+import Overlay from "@/components/Overlay";
 import { deleteDealAction } from "@/app/actions";
 import type {
   Deal,
@@ -66,7 +67,10 @@ const UNANALYSED_HINT: Record<DealStatus, string> = {
  *
  * Escape closes it, the backdrop closes it, and focus is not trapped:
  * this is a reading surface with a couple of forms in it, not a modal
- * that must be answered before the app continues.
+ * that must be answered before the app continues. All of that now lives
+ * in components/Overlay.tsx, because notes and emails pop out the same
+ * way and a second copy of it would be the fifth time this project kept
+ * one thing in two places.
  */
 function DealOverlay({
   deal,
@@ -79,30 +83,9 @@ function DealOverlay({
   canDelete: boolean;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-40 flex justify-center overflow-y-auto bg-scrim p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${deal.title} detail`}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div className="h-fit w-full max-w-4xl rounded-lg border border-line bg-raised p-6 shadow-[var(--shadow-overlay)]">
+    <Overlay label={`${deal.title} detail`} onClose={onClose}>
+      <>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h2 className="font-display text-xl font-semibold text-foreground">
@@ -134,8 +117,8 @@ function DealOverlay({
         <NoteForm dealId={deal.id} />
 
         <NoteList notes={notes} />
-      </div>
-    </div>
+      </>
+    </Overlay>
   );
 }
 

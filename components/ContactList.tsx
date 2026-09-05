@@ -5,23 +5,16 @@ import {
   createContactAction,
   createContactNoteAction,
   deleteContactAction,
-  draftEmailAction,
-  logSentEmailAction,
   updateContactAction,
-  type EmailDraftState,
   type FormState,
 } from "@/app/actions";
-import { DRAFT_LANGUAGES } from "@/lib/draftLanguages";
+import EmailPanel from "@/components/EmailPanel";
+import NoteBody, { noteLabel } from "@/components/NoteBody";
 import { mailtoHref, profileHref, telHref } from "@/lib/links";
 import { useActionSuccess } from "@/lib/useActionSuccess";
-import type { Contact, Note } from "@/lib/types";
+import type { Contact, Deal, Note } from "@/lib/types";
 
 const initialState: FormState = { error: null };
-const initialDraftState: EmailDraftState = {
-  error: null,
-  draft: null,
-  language: "en",
-};
 
 const TEXT_FIELDS = [
   { name: "name", label: "Name", type: "text", required: true },
@@ -219,195 +212,6 @@ function ContactDetails({ contact }: { contact: Contact }) {
  * appears twice, once on the empty panel and once beside "write another",
  * and the two must stay in step.
  */
-function LanguageSelect({ id, value }: { id: string; value: string }) {
-  return (
-    <>
-      <label className="sr-only" htmlFor={id}>
-        Draft language
-      </label>
-      <select
-        id={id}
-        name="language"
-        defaultValue={value}
-        className="rounded border border-line bg-background px-2 py-1 font-mono text-xs text-muted outline-none focus:border-accent"
-      >
-        {Object.entries(DRAFT_LANGUAGES).map(([code, label]) => (
-          <option key={code} value={code} className="text-foreground">
-            {label}
-          </option>
-        ))}
-      </select>
-    </>
-  );
-}
-
-/**
- * The drafted email, shown in a panel under the contact.
- *
- * Copy only, by design. Nothing here sends anything, and the subject and
- * body are separate boxes because most mail clients want them pasted into
- * different fields. The existing mailto link is untouched next to it: if
- * the draft is no good, write your own the way you always did.
- */
-function EmailDraftPanel({
-  contact,
-  dealId,
-  onClose,
-}: {
-  contact: Contact;
-  dealId: string | null;
-  onClose: () => void;
-}) {
-  const [state, draftAction, isDrafting] = useActionState(
-    draftEmailAction.bind(null, contact.id, dealId),
-    initialDraftState,
-  );
-  const [logState, logAction, isLogging] = useActionState(
-    logSentEmailAction.bind(null, contact.id, dealId),
-    initialState,
-  );
-  const [copied, setCopied] = useState<string | null>(null);
-  // Sticky rather than the single render useActionSuccess returns: the
-  // confirmation should stay while you are still looking at the draft.
-  const [hasLogged, setHasLogged] = useState(false);
-
-  if (useActionSuccess(logState)) {
-    setHasLogged(true);
-  }
-
-  async function copy(label: string, text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(label);
-    } catch {
-      // Clipboard access can be refused (an insecure origin, a browser
-      // setting). The text is on screen and selectable either way, so this
-      // is worth a quiet no rather than an error banner.
-      setCopied(null);
-    }
-  }
-
-  return (
-    <div className="mt-3 rounded border border-accent-dim bg-background/60 p-3">
-      <div className="flex items-center justify-between">
-        <h4 className="font-mono text-xs uppercase tracking-wide text-accent2">
-          Draft email
-        </h4>
-        <button
-          type="button"
-          onClick={onClose}
-          className="font-mono text-xs text-dim hover:text-accent"
-        >
-          close
-        </button>
-      </div>
-
-      {!state.draft && (
-        <form action={draftAction} className="mt-2 flex items-center gap-2">
-          <LanguageSelect id={`lang-${contact.id}`} value={state.language} />
-          <button
-            type="submit"
-            disabled={isDrafting}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {isDrafting ? "Writing..." : "Write a draft"}
-          </button>
-        </form>
-      )}
-
-      {state.error && (
-        <p role="alert" className="mt-2 text-xs text-danger">
-          {state.error}
-        </p>
-      )}
-
-      {state.draft && (
-        <div className="mt-3 flex flex-col gap-3">
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[11px] uppercase text-dim">
-                Subject
-              </span>
-              <button
-                type="button"
-                onClick={() => copy("subject", state.draft?.subject ?? "")}
-                className="font-mono text-[11px] text-dim hover:text-accent"
-              >
-                {copied === "subject" ? "copied" : "copy"}
-              </button>
-            </div>
-            <p className="mt-1 rounded border border-line bg-background px-2 py-1.5 text-sm text-foreground">
-              {state.draft.subject}
-            </p>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[11px] uppercase text-dim">
-                Body
-              </span>
-              <button
-                type="button"
-                onClick={() => copy("body", state.draft?.body ?? "")}
-                className="font-mono text-[11px] text-dim hover:text-accent"
-              >
-                {copied === "body" ? "copied" : "copy"}
-              </button>
-            </div>
-            <p className="mt-1 whitespace-pre-wrap rounded border border-line bg-background px-2 py-1.5 text-sm text-foreground">
-              {state.draft.body}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
-            <form action={draftAction} className="flex items-center gap-2">
-              <LanguageSelect
-                id={`lang-again-${contact.id}`}
-                value={state.language}
-              />
-              <button
-                type="submit"
-                disabled={isDrafting}
-                className="font-mono text-xs text-dim transition-colors hover:text-accent disabled:opacity-50"
-              >
-                {isDrafting ? "writing..." : "write another"}
-              </button>
-            </form>
-
-            <form action={logAction} className="ml-auto">
-              <input
-                type="hidden"
-                name="subject"
-                value={state.draft.subject}
-              />
-              <input type="hidden" name="body" value={state.draft.body} />
-              <button
-                type="submit"
-                disabled={isLogging}
-                className="font-mono text-xs text-accent2 transition-opacity hover:opacity-80 disabled:opacity-50"
-                title="Records this in the history as an email you sent"
-              >
-                {isLogging ? "logging..." : "i sent this"}
-              </button>
-            </form>
-          </div>
-
-          {logState.error && (
-            <p role="alert" className="text-xs text-danger">
-              {logState.error}
-            </p>
-          )}
-          {!logState.error && hasLogged && (
-            <p className="font-mono text-[11px] text-dim">
-              Logged against {dealId ? "this contact and the deal" : "this contact"}.
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /**
  * Notes attached to one person, with no deal involved.
  *
@@ -509,12 +313,14 @@ function ContactNotes({
               key={note.id}
               className="rounded border border-line bg-background/40 px-2 py-1.5"
             >
-              <p className="whitespace-pre-wrap text-xs text-foreground">
-                {note.content}
-              </p>
+              {/* Five lines and a way in. A pasted email body rendered in
+                  full here would turn this pane into a wall of text, and
+                  the pane's fixed height is the thing that stops the whole
+                  desk moving when you click between companies. */}
+              <NoteBody note={note} className="text-xs text-foreground" />
               <p className="mt-1 font-mono text-[11px] text-dim">
                 {new Date(note.created_at).toLocaleDateString()}
-                {note.kind === "email" ? " · email" : ""}
+                {noteLabel(note) ? ` · ${noteLabel(note)}` : ""}
                 {note.deal_id ? " · on a deal" : ""}
               </p>
             </li>
@@ -527,17 +333,19 @@ function ContactNotes({
 
 function ContactRow({
   contact,
-  dealId,
+  deals,
+  defaultDealId,
   notes,
   noteCount,
 }: {
   contact: Contact;
-  dealId: string | null;
+  deals: Deal[];
+  defaultDealId: string | null;
   notes: Note[];
   noteCount: number;
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [isDrafting, setIsDrafting] = useState(false);
+  const [isEmailOpen, setIsEmailOpen] = useState(false);
   const [state, formAction, isPending] = useActionState(
     updateContactAction.bind(null, contact.id),
     initialState,
@@ -571,12 +379,17 @@ function ContactRow({
             </p>
           )}
           <div className="mt-2 flex items-center gap-3">
+            {/* "email", not "draft email". The panel behind it does one
+                thing, put an email on the record, and drafting is only one
+                of the two ways in - the label used to name the way in that
+                happens to involve the model, which is how logging what you
+                actually sent ended up hidden inside it. */}
             <button
               type="button"
-              onClick={() => setIsDrafting((open) => !open)}
+              onClick={() => setIsEmailOpen((open) => !open)}
               className="font-mono text-xs text-accent2 transition-colors hover:text-accent"
             >
-              {isDrafting ? "hide draft" : "draft email"}
+              {isEmailOpen ? "hide email" : "email"}
             </button>
             <button
               type="button"
@@ -603,11 +416,12 @@ function ContactRow({
             noteCount={noteCount}
           />
 
-          {isDrafting && (
-            <EmailDraftPanel
+          {isEmailOpen && (
+            <EmailPanel
               contact={contact}
-              dealId={dealId}
-              onClose={() => setIsDrafting(false)}
+              deals={deals}
+              defaultDealId={defaultDealId}
+              onClose={() => setIsEmailOpen(false)}
             />
           )}
         </>
@@ -632,14 +446,28 @@ function ContactRow({
 export default function ContactList({
   companyId,
   contacts,
-  dealId,
+  deals,
+  defaultDealId,
   notesByContact,
   noteCountsByContact,
   headerAction,
 }: {
   companyId: string;
   contacts: Contact[];
-  dealId: string | null;
+  /**
+   * Every deal at this company, for the picker in the email panel.
+   *
+   * Closed deals are in the list on purpose. An email arriving after a
+   * deal was marked lost is exactly the kind of thing worth filing
+   * against it, and it is what the loss review reads.
+   */
+  deals: Deal[];
+  /**
+   * Which deal the picker starts on. Still null when the company has more
+   * than one open deal: a guess would be filed silently, and the picker
+   * is now there to be answered.
+   */
+  defaultDealId: string | null;
   notesByContact: Record<string, Note[]>;
   noteCountsByContact: Record<string, number>;
   /**
@@ -720,7 +548,8 @@ export default function ContactList({
             <ContactRow
               key={contact.id}
               contact={contact}
-              dealId={dealId}
+              deals={deals}
+              defaultDealId={defaultDealId}
               notes={notesByContact[contact.id] ?? []}
               noteCount={noteCountsByContact[contact.id] ?? 0}
             />

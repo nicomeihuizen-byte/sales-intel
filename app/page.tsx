@@ -368,18 +368,17 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                   headings sit on the same line is worth more than a name
                   printed twice. */}
 
-              {/* Only when there is exactly one deal. This used to pass
-                  deals[0] whatever the count, so at a company with two
-                  live deals a logged email silently attached itself to
-                  whichever one sorted first, and the panel said "this
-                  contact and the deal" without saying which. Ambiguous is
-                  worse than absent: with null, the email is filed against
-                  the person only, which is always true. A picker is the
-                  better answer and is on the list. */}
+              {/* The picker that used to be "on the list" now exists, so
+                  the whole deal set goes down rather than a single id.
+                  defaultDealId still only pre-selects when there is one
+                  open deal: with two, any choice made here would be a
+                  guess filed silently, and the point of the picker is that
+                  the question gets asked out loud. */}
               <ContactList
                 companyId={selectedCompany.id}
                 contacts={contacts}
-                dealId={openDeals.length === 1 ? openDeals[0].id : null}
+                deals={deals}
+                defaultDealId={openDeals.length === 1 ? openDeals[0].id : null}
                 notesByContact={notesByContact}
                 noteCountsByContact={contactNoteCounts}
                 headerAction={

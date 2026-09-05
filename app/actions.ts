@@ -10,7 +10,7 @@ import {
   listDealsForCompany,
   setProspect,
 } from "@/lib/companies";
-import { createNote, listNotesForDeal } from "@/lib/notes";
+import { createNote, isNoteDirection, listNotesForDeal } from "@/lib/notes";
 import {
   analyzeDealMomentum,
   draftContactEmail,
@@ -717,28 +717,44 @@ export async function createContactNoteAction(
 }
 
 /**
- * Files a drafted email into the history as a sent email.
+ * Puts an email on the record: one you sent, or one you received.
  *
- * The app never sends anything, so it cannot know an email went out. This
- * is the honest trigger: you press it after sending, and it records what
- * you actually sent rather than what was generated, because the subject
- * and body come from the (editable) boxes on screen.
+ * The app never sends anything and never reads a mailbox, so it cannot
+ * know an email happened. This is the honest trigger: you press it after
+ * the fact, and it records what actually went out or came in, because the
+ * subject and body come from the boxes on screen rather than from
+ * whatever was generated.
  *
- * Attached to the contact and, when a deal is selected, to the deal as
- * well. That second attachment is the point: an email you sent and never
- * logged makes a live deal look silent to the momentum analysis.
+ * Two things arrive from the form rather than from the call site.
+ * `direction` comes from which of the two submit buttons was pressed,
+ * because an empty box that can hold any email holds a reply as often as
+ * a chase. `dealId` comes from the picker, because a company with two
+ * live deals used to file every email against neither: the caller could
+ * only supply a deal when there was exactly one, which was safe and
+ * useless.
+ *
+ * A deal from the picker is checked against the contact's own company
+ * before it is used. Row Level Security already stops anyone reaching
+ * another user's deal; this stops one of your own emails being filed
+ * against a deal at a different company, which RLS has no opinion about
+ * and which would quietly feed the wrong deal's momentum read.
  */
-export async function logSentEmailAction(
+export async function logEmailAction(
   contactId: string,
-  dealId: string | null,
   _previousState: FormState,
   formData: FormData,
 ): Promise<FormState> {
   const subject = formData.get("subject");
   const body = formData.get("body");
+  const direction = formData.get("direction");
+  const requestedDealId = formData.get("dealId");
 
-  if (typeof subject !== "string" || typeof body !== "string") {
-    return { error: "Nothing to log." };
+  if (typeof body !== "string" || !body.trim()) {
+    return { error: "An email needs a body. Paste it in and try again." };
+  }
+
+  if (!isNoteDirection(direction)) {
+    return { error: "Say whether you sent this or received it." };
   }
 
   const { userId, error: authError } = await requireUserId();
@@ -748,28 +764,60 @@ export async function logSentEmailAction(
   }
 
   const supabase = await createServerSupabaseClient();
-  const content = `Sent: ${subject.trim()}\n\n${body.trim()}`;
 
   try {
+    const { data: contactRow, error: contactError } = await supabase
+      .from("contacts")
+      .select("id, company_id")
+      .eq("id", contactId)
+      .maybeSingle();
+
+    if (contactError) {
+      throw new Error(contactError.message);
+    }
+
+    if (!contactRow) {
+      throw new Error("That contact no longer exists.");
+    }
+
+    const companyId = (contactRow as { company_id: string }).company_id;
+
+    // "" is the picker's "no deal", which is a real answer and not a
+    // missing one: an email to someone you have no deal with still
+    // belongs in that person's history.
+    let dealId: string | null = null;
+
+    if (typeof requestedDealId === "string" && requestedDealId) {
+      const deal = await getDealById(supabase, requestedDealId);
+
+      if (!deal || deal.company_id !== companyId) {
+        return { error: "That deal is not at this contact's company." };
+      }
+
+      dealId = deal.id;
+    }
+
     await createNote(supabase, userId, {
       contactId,
       dealId,
-      content,
+      content: body,
       kind: "email",
+      subject: typeof subject === "string" ? subject : null,
+      direction,
     });
+
+    revalidateWorkspace();
+
+    if (dealId) {
+      revalidatePath(`/deals/${dealId}`);
+    }
+
+    return { error: null };
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Failed to log the email.",
     };
   }
-
-  revalidateWorkspace();
-
-  if (dealId) {
-    revalidatePath(`/deals/${dealId}`);
-  }
-
-  return { error: null };
 }
 
 /**

@@ -286,8 +286,26 @@ function validateDealWinReview(
   };
 }
 
-type NoteForAnalysis = Pick<Note, "content" | "created_at">;
+type NoteForAnalysis = Pick<
+  Note,
+  "content" | "created_at" | "kind" | "subject" | "direction"
+>;
 
+/**
+ * The note history as the model sees it.
+ *
+ * Emails are labelled with their direction, and that label is the reason
+ * the direction column exists at all. A history of five outbound emails
+ * and no replies and a history of five exchanges are the same five rows
+ * to a database and opposite readings of a deal; without the word "sent"
+ * or "received" in front of them the model has to guess from the prose,
+ * and it guesses the way the prose leans rather than the way the deal
+ * actually went.
+ *
+ * The subject is carried too, because an email's subject line is often
+ * the only place the concrete thing is named ("Notary appointment on the
+ * 25th") while the body is pleasantries around it.
+ */
 function formatNoteHistory(notes: NoteForAnalysis[]): string {
   if (notes.length === 0) {
     return "No notes have been logged for this deal yet.";
@@ -296,7 +314,15 @@ function formatNoteHistory(notes: NoteForAnalysis[]): string {
   return notes
     .map((note) => {
       const date = new Date(note.created_at).toISOString().slice(0, 10);
-      return `[${date}] ${note.content}`;
+
+      if (note.kind !== "email") {
+        return `[${date}] ${note.content}`;
+      }
+
+      const label = note.direction === "inbound" ? "email received" : "email sent";
+      const subject = note.subject ? ` re: ${note.subject}` : "";
+
+      return `[${date}] (${label}${subject}) ${note.content}`;
     })
     .join("\n");
 }

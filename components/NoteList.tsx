@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { useActionSuccess } from "@/lib/useActionSuccess";
 import { updateNoteAction, type NoteActionState } from "@/app/deals/actions";
+import NoteBody, { noteLabel } from "@/components/NoteBody";
 import type { Note } from "@/lib/types";
 
 const initialState: NoteActionState = { error: null };
@@ -39,6 +40,14 @@ function NoteRow({ note }: { note: Note }) {
     return (
       <li className="rounded border border-accent-dim px-4 py-3">
         <form action={formAction} className="flex flex-col gap-2">
+          {/* The subject is shown but not editable here. updateNoteAction
+              rewrites content and nothing else, and widening it to a
+              second column is a change to the note-editing path that
+              belongs in its own patch rather than riding along with the
+              one that introduced the column. */}
+          {note.subject && (
+            <p className="font-medium text-foreground">{note.subject}</p>
+          )}
           <label className="sr-only" htmlFor={`note-${note.id}`}>
             Edit note
           </label>
@@ -83,13 +92,15 @@ function NoteRow({ note }: { note: Note }) {
 
   return (
     <li className="group rounded border border-line px-4 py-3">
-      <p className="whitespace-pre-wrap text-sm text-foreground">
-        {note.content}
-      </p>
+      {/* Clamped to five lines with the rest a click away. The timeline
+          is meant to be scanned - what happened, when, in what order -
+          and one pasted email in the middle of it used to push a month of
+          history off the screen. */}
+      <NoteBody note={note} />
       <div className="mt-1 flex items-center gap-3">
         <p className="text-xs text-dim">
-          {note.kind === "email" && (
-            <span className="text-accent2">{"email · "}</span>
+          {noteLabel(note) && (
+            <span className="text-accent2">{`email ${noteLabel(note)} · `}</span>
           )}
           {new Date(note.created_at).toLocaleString()}
           {wasEdited(note) && (

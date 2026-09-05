@@ -34,9 +34,19 @@ export interface Deal {
 }
 
 // What a note records. "note" is something that happened; "email" is a
-// message that was sent, logged from the draft panel so the history knows
-// about contact the app itself never made.
+// message, logged so the history knows about contact the app itself never
+// made.
 export type NoteKind = "note" | "email";
+
+// Which way an email went. Only ever set on a note of kind "email", and
+// always set on one - the database enforces both halves.
+//
+// This is the difference between "I chased them again" and "they replied",
+// which is most of what momentum is. Before this existed every logged
+// email was outbound by construction, so it could be left implicit; once
+// any email body can be pasted in, leaving it implicit means filing a
+// prospect's answer as another unanswered chase.
+export type NoteDirection = "outbound" | "inbound";
 
 export interface Note {
   id: string;
@@ -47,6 +57,12 @@ export interface Note {
   deal_id: string | null;
   contact_id: string | null;
   kind: NoteKind;
+  // The email's subject line, held apart from the body rather than
+  // written into the top of it. Null on a plain note, and null on an
+  // email logged before the column existed whose content did not carry
+  // the old "Sent: " prefix.
+  subject: string | null;
+  direction: NoteDirection | null;
   user_id: string;
   content: string;
   created_at: string;
