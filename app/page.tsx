@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase";
 import {
   countCompanyContents,
   getCompanyById,
+  listCompanyIndex,
   listDealsForCompany,
   listProspects,
   MAX_PROSPECTS,
@@ -142,11 +143,17 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
   // which RLS makes indistinguishable) falls back to showing nothing
   // selected rather than a not-found page. A stale bookmark should land
   // you in the app, not on an error.
-  const [prospects, insights, requestedCompany] = await Promise.all([
-    listProspects(supabase),
-    listDealInsights(supabase),
-    companyId ? getCompanyById(supabase, companyId) : Promise.resolve(null),
-  ]);
+  const [prospects, insights, requestedCompany, companyIndex] =
+    await Promise.all([
+      listProspects(supabase),
+      listDealInsights(supabase),
+      companyId ? getCompanyById(supabase, companyId) : Promise.resolve(null),
+      // Four columns for every company, so the details panel can draw the
+      // group a prospect sits in. The desk itself only ever shows the five,
+      // but "what is this part of" is a question about the companies it is
+      // NOT showing.
+      listCompanyIndex(supabase),
+    ]);
 
   // The desk only shows companies that are in your five, and a company
   // that is not picked reads here as nothing selected.
@@ -414,6 +421,7 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                     <CompanyDetailsButton
                       key="company-details"
                       company={selectedCompany}
+                      index={companyIndex}
                     />
                     {canDelete && companyContents ? (
                       <ConfirmDeleteButton

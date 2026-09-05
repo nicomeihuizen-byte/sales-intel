@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase";
-import { listCompaniesForUser, MAX_PROSPECTS } from "@/lib/companies";
+import {
+  listCompaniesForUser,
+  listCompanyIndex,
+  MAX_PROSPECTS,
+} from "@/lib/companies";
 import AppNav from "@/components/AppNav";
 import CompanyList from "@/components/CompanyList";
 import NewCompanyForm from "@/components/NewCompanyForm";
@@ -15,7 +19,14 @@ import TerminalShell from "@/components/TerminalShell";
 
 export default async function CompaniesPage() {
   const supabase = await createServerSupabaseClient();
-  const companies = await listCompaniesForUser(supabase);
+
+  // Two queries at once rather than one after the other. The index is the
+  // four columns the group tree and the "part of" picker need for every
+  // company, including the ones this page is not drawing a row for.
+  const [companies, index] = await Promise.all([
+    listCompaniesForUser(supabase),
+    listCompanyIndex(supabase),
+  ]);
 
   const prospects = companies.filter((company) => company.prospect_since);
   const slotsFull = prospects.length >= MAX_PROSPECTS;
@@ -82,11 +93,15 @@ export default async function CompaniesPage() {
       {/* The scrolling region. min-h-0 is what lets it shrink below its own
           content instead of pushing the add form off the bottom. */}
       <div className="scroll-pane mt-5 min-h-0 flex-1 overflow-y-auto rounded border border-line">
-        <CompanyList companies={companies} slotsFull={slotsFull} />
+        <CompanyList
+          companies={companies}
+          index={index}
+          slotsFull={slotsFull}
+        />
       </div>
 
       <div className="shrink-0">
-        <NewCompanyForm />
+        <NewCompanyForm index={index} />
       </div>
     </TerminalShell>
   );

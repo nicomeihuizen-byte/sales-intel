@@ -5,6 +5,7 @@ import { useActionSuccess } from "@/lib/useActionSuccess";
 import { createCompanyAction, type FormState } from "@/app/actions";
 import CompanyFields from "@/components/CompanyFields";
 import Overlay from "@/components/Overlay";
+import type { CompanyIndexEntry } from "@/lib/companies";
 
 const initialState: FormState = { error: null };
 
@@ -22,7 +23,12 @@ const initialState: FormState = { error: null };
  * trip through an edit panel is how a record ends up never being filled
  * in at all.
  */
-export default function NewCompanyForm() {
+export default function NewCompanyForm({
+  index,
+}: {
+  /** Every company, for the "part of" picker. */
+  index: CompanyIndexEntry[];
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, formAction, isPending] = useActionState(
     createCompanyAction,
@@ -64,6 +70,7 @@ export default function NewCompanyForm() {
               formAction={formAction}
               state={state}
               isPending={isPending}
+              index={index}
               submitLabel="Add"
               onCancel={() => setIsOpen(false)}
             />

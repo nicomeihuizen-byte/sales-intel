@@ -17,6 +17,12 @@ export interface Company {
   // means "not filled in", never "none": the panel prints nothing for a
   // null rather than a dash, because a dash reads like an answer.
   //
+  // One line on what they do. A stable fact, the same class as the
+  // address: no date on it, nothing that decays, nothing that could hide
+  // from the timeline. Deliberately not a notes field, and deliberately
+  // not prospect_intent (which belongs to the slot, not the company, and
+  // is supposed to go stale).
+  description: string | null;
   // One free-text address rather than street/postcode/city broken out.
   // Addresses get pasted in as a block, and nothing here sorts on the
   // parts. `country` is separate because it is the one part used on its
@@ -36,6 +42,12 @@ export interface Company {
   // registration number (KvK, HRB, Companies House) goes on the contract.
   vat_number: string | null;
   registration_number: string | null;
+  // The company this one is part of, or null at the top of a group.
+  //
+  // Points up rather than holding a list of subsidiaries, so the fact is
+  // stored once. The children are found by asking which companies point
+  // here, which is what companies_parent_id_idx exists for.
+  parent_id: string | null;
 }
 
 export type DealStatus = "open" | "won" | "lost";

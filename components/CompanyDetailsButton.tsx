@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import CompanyPanel from "@/components/CompanyPanel";
+import type { CompanyIndexEntry } from "@/lib/companies";
 import type { Company } from "@/lib/types";
 
 /**
@@ -16,8 +17,11 @@ import type { Company } from "@/lib/types";
  */
 export default function CompanyDetailsButton({
   company,
+  index,
 }: {
   company: Company;
+  /** Every company, for the group tree and the "part of" picker. */
+  index: CompanyIndexEntry[];
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -33,7 +37,11 @@ export default function CompanyDetailsButton({
       </button>
 
       {isOpen && (
-        <CompanyPanel company={company} onClose={() => setIsOpen(false)} />
+        <CompanyPanel
+          company={company}
+          index={index}
+          onClose={() => setIsOpen(false)}
+        />
       )}
     </>
   );

@@ -2,6 +2,7 @@
 
 import type { FormState } from "@/app/actions";
 import MultiField from "@/components/MultiField";
+import type { CompanyIndexEntry } from "@/lib/companies";
 import type { Company } from "@/lib/types";
 
 /**
@@ -50,6 +51,7 @@ export default function CompanyFields({
   state,
   isPending,
   company,
+  index,
   submitLabel,
   onCancel,
 }: {
@@ -58,9 +60,44 @@ export default function CompanyFields({
   isPending: boolean;
   /** Absent when adding. Present when editing, and every box starts full. */
   company?: Company;
+  /** Every company, for the "part of" picker. */
+  index: CompanyIndexEntry[];
   submitLabel: string;
   onCancel: () => void;
 }) {
+  // Which companies may be chosen as the parent.
+  //
+  // Not itself, and not anything already underneath it: making a company
+  // part of its own subsidiary is a cycle, and every walk over the group
+  // afterwards runs until something stops it. The server refuses this too
+  // (assertParentIsUsable), which is the check that counts. This one just
+  // means the impossible answers are not in the list to begin with.
+  const forbidden = new Set<string>();
+
+  if (company) {
+    forbidden.add(company.id);
+
+    // Repeated passes rather than recursion: each one adds the children of
+    // everything already forbidden, and it stops when a pass adds nothing.
+    // At this size that is cheaper to read than a tree walk, and it cannot
+    // loop forever on a cyclic row.
+    for (;;) {
+      const before = forbidden.size;
+
+      for (const entry of index) {
+        if (entry.parent_id && forbidden.has(entry.parent_id)) {
+          forbidden.add(entry.id);
+        }
+      }
+
+      if (forbidden.size === before) {
+        break;
+      }
+    }
+  }
+
+  const parentOptions = index.filter((entry) => !forbidden.has(entry.id));
+
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <label className="flex flex-col gap-1 font-mono text-xs text-muted">
@@ -70,6 +107,21 @@ export default function CompanyFields({
           required
           autoFocus
           defaultValue={company?.name ?? ""}
+          className={inputClass}
+        />
+      </label>
+
+      {/* What they do, in a line. The thing that makes "Ober-Haus" mean
+          something again three weeks after you added it. Not a notes box:
+          nothing dated goes in here, because a note in a company field is
+          a note the timeline and the analysis never see. */}
+      <label className="flex flex-col gap-1 font-mono text-xs text-muted">
+        Description
+        <textarea
+          name="description"
+          rows={2}
+          defaultValue={company?.description ?? ""}
+          placeholder="What do they do?"
           className={inputClass}
         />
       </label>
@@ -118,6 +170,29 @@ export default function CompanyFields({
         values={company?.socials ?? []}
         placeholder="linkedin.com/company/... or x.com/..."
       />
+
+      {/* One picker, pointing up. Subsidiaries are not entered here:
+          a subsidiary is a company in its own right, with its own VAT
+          number and its own deals, so it is added as a company and then
+          pointed at this one. The tree in the panel shows both directions
+          from the single fact stored here. */}
+      {parentOptions.length > 0 && (
+        <label className="flex flex-col gap-1 font-mono text-xs text-muted">
+          Part of
+          <select
+            name="parentId"
+            defaultValue={company?.parent_id ?? ""}
+            className={inputClass}
+          >
+            <option value="">not part of a group</option>
+            {parentOptions.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {state.error && (
         <p role="alert" className="text-sm text-danger">

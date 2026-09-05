@@ -3,7 +3,7 @@
 import { useState } from "react";
 import CompanyPanel from "@/components/CompanyPanel";
 import ProspectToggle from "@/components/ProspectToggle";
-import type { CompanyWithCounts } from "@/lib/companies";
+import type { CompanyIndexEntry, CompanyWithCounts } from "@/lib/companies";
 
 /**
  * The book: every company you have ever spoken to, with the pick control
@@ -24,9 +24,12 @@ import type { CompanyWithCounts } from "@/lib/companies";
  */
 export default function CompanyList({
   companies,
+  index,
   slotsFull,
 }: {
   companies: CompanyWithCounts[];
+  /** Every company, for the group tree and the "part of" picker. */
+  index: CompanyIndexEntry[];
   slotsFull: boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -89,6 +92,7 @@ export default function CompanyList({
         <CompanyPanel
           key={open.id}
           company={open}
+          index={index}
           onClose={() => setOpenId(null)}
           showDeskLink
         />

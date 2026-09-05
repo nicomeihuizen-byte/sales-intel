@@ -107,6 +107,7 @@ function companyInputFromForm(formData: FormData): CompanyInput | null {
 
   return {
     name,
+    description: optional("description"),
     address: optional("address"),
     country: optional("country"),
     website: optional("website"),
@@ -115,6 +116,11 @@ function companyInputFromForm(formData: FormData): CompanyInput | null {
     socials: list("socials"),
     vatNumber: optional("vatNumber"),
     registrationNumber: optional("registrationNumber"),
+    // "" from the picker means "not part of a group", which clears the
+    // column. Undefined would mean the form never carried the field, and
+    // lib/companies.ts treats both as null - the distinction only matters
+    // if a partial company form is ever added, which it should not be.
+    parentId: optional("parentId") ?? null,
   };
 }
 

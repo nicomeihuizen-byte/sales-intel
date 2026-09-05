@@ -24,7 +24,7 @@ export const MAX_PROSPECTS = 5;
  * query and not the other. Same shape of bug, headed off before it lands.
  */
 export const COMPANY_COLUMNS =
-  "id, user_id, name, created_at, prospect_since, address, country, website, email, phone, socials, vat_number, registration_number";
+  "id, user_id, name, created_at, prospect_since, description, address, country, website, email, phone, socials, vat_number, registration_number, parent_id";
 
 export interface CompanyWithCounts extends Company {
   deal_count: number;
@@ -215,12 +215,52 @@ export async function getCompanyById(
 }
 
 /**
+ * The four fields needed to draw a group tree, for every company at once.
+ *
+ * Four columns rather than COMPANY_COLUMNS because this is fetched on
+ * every page that can open a company panel, and the panel needs to know
+ * about companies it is not showing: to walk up to the top of the group,
+ * to find the subsidiaries, and to grey out the ones you cannot pick as a
+ * parent. Pulling the full record for all of them to draw a list of names
+ * would be most of the row for none of the use.
+ *
+ * The whole set, not a subtree, and that is a deliberate limit. Postgres
+ * can walk a tree properly with a recursive CTE, but PostgREST cannot call
+ * one without a stored function, and one small query plus a walk in memory
+ * is honest at this size. At a few hundred companies it is nothing. At ten
+ * thousand it is the wrong shape, and the fix then is an RPC, not a bigger
+ * select.
+ */
+export interface CompanyIndexEntry {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  prospect_since: string | null;
+}
+
+export async function listCompanyIndex(
+  supabase: SupabaseClient,
+): Promise<CompanyIndexEntry[]> {
+  const { data, error } = await supabase
+    .from("companies")
+    .select("id, name, parent_id, prospect_since")
+    .order("name", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to load the company index: ${error.message}`);
+  }
+
+  return (data ?? []) as CompanyIndexEntry[];
+}
+
+/**
  * Everything the forms can set on a company. Name is the only required
  * one, matching ContactInput: a prospect you heard about on a call has a
  * name and nothing else, and the tool should take it.
  */
 export interface CompanyInput {
   name: string;
+  description?: string;
   address?: string;
   country?: string;
   website?: string;
@@ -229,6 +269,12 @@ export interface CompanyInput {
   socials?: string[];
   vatNumber?: string;
   registrationNumber?: string;
+  /**
+   * The company this one is part of. `undefined` means the form did not
+   * carry the field at all; `null` or `""` means "not part of anything",
+   * which is a real answer and clears it.
+   */
+  parentId?: string | null;
 }
 
 /**
@@ -276,6 +322,7 @@ function normalizeCompanyInput(input: CompanyInput) {
 
   return {
     name,
+    description: blankToNull(input.description),
     address: blankToNull(input.address),
     country: blankToNull(input.country),
     website: urlOrNull(input.website, "website"),
@@ -343,6 +390,94 @@ async function assertNameIsFree(
 }
 
 /**
+ * "" from an unselected picker means "not part of anything", which is a
+ * real answer and clears the column. Kept out of normalizeCompanyInput
+ * because that function is about text fields, and this one has to be
+ * checked against the database before it can be written.
+ */
+function normalizeParentId(value: string | null | undefined): string | null {
+  const trimmed = typeof value === "string" ? value.trim() : null;
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * How far up a group chain this will walk before giving up.
+ *
+ * Not a business rule. It is a stop on a loop that reads rows the caller
+ * supplied ids for, so that a cycle already sitting in the data (written
+ * by a direct SQL edit, or by a future bug in here) costs one refused save
+ * rather than an endless run of queries.
+ */
+const MAX_GROUP_DEPTH = 32;
+
+/**
+ * Checks that `parentId` is a company this user can actually be part of.
+ *
+ * Three separate refusals, and each one has a reason:
+ *
+ * 1. **Itself.** Trivial, and the first thing a double-click finds.
+ * 2. **A company that does not read back.** RLS makes another user's row
+ *    invisible to a select but NOT to a foreign key, which is checked
+ *    below the policy layer. So without this, a guessed UUID would be
+ *    accepted into `parent_id` and then render as an empty branch forever.
+ *    Reading the parent first is what keeps the graph inside one tenant.
+ * 3. **A descendant.** Making Ober-Haus the parent of Kiinteistömaailma
+ *    while Kiinteistömaailma is already the parent of Ober-Haus produces a
+ *    cycle, and every walk over the group afterwards runs until something
+ *    stops it. This is caught by climbing from the proposed parent to the
+ *    top: if the company being edited turns up on the way, the edge would
+ *    close a loop.
+ *
+ * The climb is one query per level, which is fine for depth measured in
+ * single digits and is only paid when a parent is actually being set.
+ */
+async function assertParentIsUsable(
+  supabase: SupabaseClient,
+  companyId: string | null,
+  parentId: string,
+): Promise<void> {
+  if (companyId && parentId === companyId) {
+    throw new Error("A company cannot be part of itself.");
+  }
+
+  let cursor: string | null = parentId;
+
+  for (let step = 0; step < MAX_GROUP_DEPTH; step += 1) {
+    if (!cursor) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("companies")
+      .select("id, parent_id")
+      .eq("id", cursor)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to check the group: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new Error("That company is not in your list.");
+    }
+
+    const row = data as { id: string; parent_id: string | null };
+
+    if (companyId && row.parent_id === companyId) {
+      throw new Error(
+        "That would put the company inside one of its own subsidiaries.",
+      );
+    }
+
+    cursor = row.parent_id;
+  }
+
+  throw new Error(
+    "That group is nested too deeply to check. Clear a parent first.",
+  );
+}
+
+/**
  * Creates a company with no deal attached. The deal form still creates
  * companies implicitly, but a prospect you have only spoken to needs to
  * exist before there is anything to call a deal.
@@ -353,12 +488,21 @@ export async function createCompany(
   input: CompanyInput,
 ): Promise<Company> {
   const fields = normalizeCompanyInput(input);
+  const parentId = normalizeParentId(input.parentId);
 
   await assertNameIsFree(supabase, userId, fields.name);
 
+  // A brand new company has no subsidiaries, so the only cycle it could
+  // form is with itself, and it has no id yet. The check still runs
+  // because it is also what keeps a guessed parent id from another tenant
+  // out of the column.
+  if (parentId) {
+    await assertParentIsUsable(supabase, null, parentId);
+  }
+
   const { data, error } = await supabase
     .from("companies")
-    .insert({ user_id: userId, ...fields })
+    .insert({ user_id: userId, ...fields, parent_id: parentId })
     .select(COMPANY_COLUMNS)
     .single();
 
@@ -391,12 +535,17 @@ export async function updateCompany(
   input: CompanyInput,
 ): Promise<Company> {
   const fields = normalizeCompanyInput(input);
+  const parentId = normalizeParentId(input.parentId);
 
   await assertNameIsFree(supabase, userId, fields.name, companyId);
 
+  if (parentId) {
+    await assertParentIsUsable(supabase, companyId, parentId);
+  }
+
   const { data, error } = await supabase
     .from("companies")
-    .update(fields)
+    .update({ ...fields, parent_id: parentId })
     .eq("id", companyId)
     .select(COMPANY_COLUMNS)
     .maybeSingle();

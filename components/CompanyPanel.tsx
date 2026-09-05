@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useActionState, useState, type ReactNode } from "react";
 import { updateCompanyAction, type FormState } from "@/app/actions";
 import CompanyFields from "@/components/CompanyFields";
+import CompanyTree from "@/components/CompanyTree";
 import Overlay from "@/components/Overlay";
 import { mailtoHref, profileHref, socialLabel, telHref } from "@/lib/links";
 import { useActionSuccess } from "@/lib/useActionSuccess";
+import type { CompanyIndexEntry } from "@/lib/companies";
 import type { Company } from "@/lib/types";
 
 const initialState: FormState = { error: null };
@@ -81,9 +83,16 @@ function LinkOrText({
   );
 }
 
-function CompanyDetails({ company }: { company: Company }) {
+function CompanyDetails({
+  company,
+  index,
+}: {
+  company: Company;
+  index: CompanyIndexEntry[];
+}) {
   const hasAny = Boolean(
-    company.address ||
+    company.description ||
+      company.address ||
       company.country ||
       company.phone ||
       company.email ||
@@ -95,15 +104,27 @@ function CompanyDetails({ company }: { company: Company }) {
 
   if (!hasAny) {
     return (
-      <p className="text-sm text-muted">
-        Nothing filled in yet beyond the name. Press edit to add the address,
-        the numbers and how to reach them.
-      </p>
+      <>
+        <p className="text-sm text-muted">
+          Nothing filled in yet beyond the name. Press edit to add what they
+          do, the address, the numbers and how to reach them.
+        </p>
+        <div className="mt-5">
+          <CompanyTree companyId={company.id} index={index} />
+        </div>
+      </>
     );
   }
 
   return (
     <div className="flex flex-col gap-2.5">
+      {/* First, because it is the one line that makes the name mean
+          something again three weeks later. */}
+      <Row label="What they do">
+        {company.description && (
+          <span className="whitespace-pre-wrap">{company.description}</span>
+        )}
+      </Row>
       <Row label="Address">
         {company.address && (
           // The address was pasted in as a block, so it is printed as one.
@@ -160,16 +181,26 @@ function CompanyDetails({ company }: { company: Company }) {
       </Row>
       <Row label="VAT number">{company.vat_number}</Row>
       <Row label="Registration">{company.registration_number}</Row>
+
+      {/* The group, drawn from the parent links. Renders nothing at all
+          for a company standing on its own, because a heading called
+          "group" over a single name is worse than no heading. */}
+      <div className="mt-2 border-t border-line pt-3">
+        <CompanyTree companyId={company.id} index={index} />
+      </div>
     </div>
   );
 }
 
 export default function CompanyPanel({
   company,
+  index,
   onClose,
   showDeskLink = false,
 }: {
   company: Company;
+  /** Every company, for the group tree and the "part of" picker. */
+  index: CompanyIndexEntry[];
   onClose: () => void;
   /** Offered on the companies page, pointless on the desk itself. */
   showDeskLink?: boolean;
@@ -220,11 +251,12 @@ export default function CompanyPanel({
             state={state}
             isPending={isPending}
             company={company}
+            index={index}
             submitLabel="Save"
             onCancel={() => setIsEditing(false)}
           />
         ) : (
-          <CompanyDetails company={company} />
+          <CompanyDetails company={company} index={index} />
         )}
       </div>
 
