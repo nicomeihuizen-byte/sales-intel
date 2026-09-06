@@ -108,6 +108,7 @@ function companyInputFromForm(formData: FormData): CompanyInput | null {
   return {
     name,
     description: optional("description"),
+    background: optional("background"),
     address: optional("address"),
     country: optional("country"),
     website: optional("website"),

@@ -24,7 +24,7 @@ export const MAX_PROSPECTS = 5;
  * query and not the other. Same shape of bug, headed off before it lands.
  */
 export const COMPANY_COLUMNS =
-  "id, user_id, name, created_at, prospect_since, description, address, country, website, email, phone, socials, vat_number, registration_number, parent_id";
+  "id, user_id, name, created_at, prospect_since, description, background, address, country, website, email, phone, socials, vat_number, registration_number, parent_id";
 
 export interface CompanyWithCounts extends Company {
   deal_count: number;
@@ -261,6 +261,7 @@ export async function listCompanyIndex(
 export interface CompanyInput {
   name: string;
   description?: string;
+  background?: string;
   address?: string;
   country?: string;
   website?: string;
@@ -323,6 +324,7 @@ function normalizeCompanyInput(input: CompanyInput) {
   return {
     name,
     description: blankToNull(input.description),
+    background: blankToNull(input.background),
     address: blankToNull(input.address),
     country: blankToNull(input.country),
     website: urlOrNull(input.website, "website"),

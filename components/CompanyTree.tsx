@@ -47,6 +47,7 @@ function Branch({
   currentId,
   depth,
   seen,
+  onSelect,
 }: {
   entry: CompanyIndexEntry;
   childrenOf: Map<string | null, CompanyIndexEntry[]>;
@@ -54,12 +55,21 @@ function Branch({
   depth: number;
   /** Ids already drawn on this path, so a cycle cannot recurse forever. */
   seen: Set<string>;
+  onSelect?: (companyId: string) => void;
 }) {
   const isCurrent = entry.id === currentId;
   const isProspect = Boolean(entry.prospect_since);
   const children = (childrenOf.get(entry.id) ?? []).filter(
     (child) => !seen.has(child.id),
   );
+
+  // The company you already have open is not a link to itself, and a tree
+  // drawn somewhere that cannot switch companies stays plain text. Both
+  // are the same rule: only render something clickable when the click has
+  // somewhere to go.
+  const clickable = Boolean(onSelect) && !isCurrent;
+
+  const nameClass = `text-left text-sm ${isCurrent ? "font-medium" : ""}`;
 
   return (
     <li>
@@ -77,12 +87,27 @@ function Branch({
             └
           </span>
         )}
-        <span
-          className={`text-sm ${isCurrent ? "font-medium" : ""}`}
-          aria-current={isCurrent ? "true" : undefined}
-        >
-          {entry.name}
-        </span>
+        {/* A button and not an anchor, for the same reason the company row
+            is one: this swaps what the open panel is showing, on the page
+            it is already on. There is no address to give it, so an anchor
+            would offer "open in new tab" for a destination that does not
+            exist. */}
+        {clickable ? (
+          <button
+            type="button"
+            onClick={() => onSelect?.(entry.id)}
+            className={`${nameClass} underline decoration-line decoration-dotted underline-offset-4 transition-colors hover:text-accent hover:decoration-accent`}
+          >
+            {entry.name}
+          </button>
+        ) : (
+          <span
+            className={nameClass}
+            aria-current={isCurrent ? "true" : undefined}
+          >
+            {entry.name}
+          </span>
+        )}
         {isProspect && (
           // The reason the tree is worth drawing at all. Three of your five
           // in one group is the thing the cap exists to prevent, and
@@ -106,6 +131,7 @@ function Branch({
               currentId={currentId}
               depth={depth + 1}
               seen={new Set([...seen, child.id])}
+              onSelect={onSelect}
             />
           ))}
         </ul>
@@ -117,9 +143,18 @@ function Branch({
 export default function CompanyTree({
   companyId,
   index,
+  onSelect,
 }: {
   companyId: string;
   index: CompanyIndexEntry[];
+  /**
+   * Opens another company in the group. Optional: the desk holds only the
+   * five, so it cannot honour a click on a company outside them and the
+   * tree stays plain text there. A link that lands on nothing is the bug
+   * CompanyList's comment already describes, and this is the same one one
+   * level down.
+   */
+  onSelect?: (companyId: string) => void;
 }) {
   const byId = new Map(index.map((entry) => [entry.id, entry]));
   const self = byId.get(companyId);
@@ -168,6 +203,7 @@ export default function CompanyTree({
           currentId={companyId}
           depth={0}
           seen={new Set([root.id])}
+          onSelect={onSelect}
         />
       </ul>
 

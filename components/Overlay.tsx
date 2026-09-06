@@ -20,20 +20,43 @@ import { useEffect, type ReactNode } from "react";
  * An overlay rather than an expanding row, because the desk's three panes
  * must never move. You open a thing, read it, close it, and everything is
  * exactly where you left it.
+ *
+ * `dismissible` is the exception, and it exists for one specific failure.
+ * Adding a company means alt-tabbing to a registry page, copying a VAT
+ * number, coming back, pasting, and going again, eight times. Every one of
+ * those returns is a click landing somewhere on this screen, and a click on
+ * the backdrop unmounts the form and takes twenty minutes of typing with
+ * it. So a panel holding a half-filled form sets `dismissible={false}` and
+ * can only be left through cancel or save.
+ *
+ * It stays true by default. A panel you opened to READ costs nothing to
+ * close by accident, and a dialog that refuses to go away when you have
+ * put nothing into it is the more annoying failure of the two.
  */
 export default function Overlay({
   label,
   onClose,
   widthClassName = "max-w-4xl",
+  dismissible = true,
   children,
 }: {
   /** Announced to screen readers as the dialog's name. */
   label: string;
   onClose: () => void;
   widthClassName?: string;
+  /**
+   * False while the panel holds unsaved input: the backdrop and Escape
+   * both stop closing it, and the form's own cancel button becomes the
+   * only way out. Always leave a visible one when passing false.
+   */
+  dismissible?: boolean;
   children: ReactNode;
 }) {
   useEffect(() => {
+    if (!dismissible) {
+      return;
+    }
+
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         onClose();
@@ -42,7 +65,7 @@ export default function Overlay({
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [dismissible, onClose]);
 
   return (
     <div
@@ -54,7 +77,7 @@ export default function Overlay({
       // the target check, a click that starts inside the card and drifts
       // out while selecting text closes the thing you were reading.
       onClick={(event) => {
-        if (event.target === event.currentTarget) {
+        if (dismissible && event.target === event.currentTarget) {
           onClose();
         }
       }}

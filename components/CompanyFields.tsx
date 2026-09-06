@@ -126,6 +126,29 @@ export default function CompanyFields({
         />
       </label>
 
+      {/* The research, under the description and in the same class as it:
+          who owns them, who signs, what the group looks like, how you got
+          in. Stable facts with no date on them.
+
+          Called Background and not Notes on purpose. A note is something
+          that happened, it hangs off a deal or a contact, and
+          listNotesForAnalysis is what carries it into the momentum read.
+          Nothing typed in this box is ever seen by lib/ai.ts, so a line
+          like "chased her again, no reply" would be a fact the one
+          feature this product has would never learn. The label is the
+          only thing standing between those two, which is why it is not
+          the word he asked for. */}
+      <label className="flex flex-col gap-1 font-mono text-xs text-muted">
+        Background
+        <textarea
+          name="background"
+          rows={5}
+          defaultValue={company?.background ?? ""}
+          placeholder="Ownership, who decides, the way in. Not what happened today - that is a note on a deal."
+          className={inputClass}
+        />
+      </label>
+
       {/* One box, not four. Nobody types an address a field at a time;
           they paste the block off a website footer or an invoice, and
           this app never sorts on the parts. Country is separate below

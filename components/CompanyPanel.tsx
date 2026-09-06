@@ -86,12 +86,16 @@ function LinkOrText({
 function CompanyDetails({
   company,
   index,
+  onSelect,
 }: {
   company: Company;
   index: CompanyIndexEntry[];
+  /** Passed through to the tree, so a name in the group is clickable. */
+  onSelect?: (companyId: string) => void;
 }) {
   const hasAny = Boolean(
     company.description ||
+      company.background ||
       company.address ||
       company.country ||
       company.phone ||
@@ -110,7 +114,11 @@ function CompanyDetails({
           do, the address, the numbers and how to reach them.
         </p>
         <div className="mt-5">
-          <CompanyTree companyId={company.id} index={index} />
+          <CompanyTree
+            companyId={company.id}
+            index={index}
+            onSelect={onSelect}
+          />
         </div>
       </>
     );
@@ -118,13 +126,28 @@ function CompanyDetails({
 
   return (
     <div className="flex flex-col gap-2.5">
-      {/* First, because it is the one line that makes the name mean
-          something again three weeks later. */}
-      <Row label="What they do">
-        {company.description && (
-          <span className="whitespace-pre-wrap">{company.description}</span>
-        )}
-      </Row>
+      {/* The two prose blocks sit above the field rows and are spaced away
+          from them, because they are a different kind of thing. Everything
+          below is one short value on one line; these two are paragraphs,
+          and running a wrapped paragraph straight into "Address" at the
+          same 10px gap made the description look like the first line of
+          the address. The rows keep their tight rhythm, the prose gets
+          air. */}
+      <div className="flex flex-col gap-2.5 pb-2">
+        {/* First, because it is the one line that makes the name mean
+            something again three weeks later. */}
+        <Row label="What they do">
+          {company.description && (
+            <span className="whitespace-pre-wrap">{company.description}</span>
+          )}
+        </Row>
+        <Row label="Background">
+          {company.background && (
+            <span className="whitespace-pre-wrap">{company.background}</span>
+          )}
+        </Row>
+      </div>
+
       <Row label="Address">
         {company.address && (
           // The address was pasted in as a block, so it is printed as one.
@@ -186,7 +209,7 @@ function CompanyDetails({
           for a company standing on its own, because a heading called
           "group" over a single name is worse than no heading. */}
       <div className="mt-2 border-t border-line pt-3">
-        <CompanyTree companyId={company.id} index={index} />
+        <CompanyTree companyId={company.id} index={index} onSelect={onSelect} />
       </div>
     </div>
   );
@@ -196,12 +219,21 @@ export default function CompanyPanel({
   company,
   index,
   onClose,
+  onSelect,
   showDeskLink = false,
 }: {
   company: Company;
   /** Every company, for the group tree and the "part of" picker. */
   index: CompanyIndexEntry[];
   onClose: () => void;
+  /**
+   * Switch the panel to another company, given when the caller holds every
+   * company and can therefore honour the request. That is the companies
+   * page; the desk holds only your five, so it passes nothing and the
+   * group tree stays plain text there rather than offering a link to a
+   * company the destination cannot show.
+   */
+  onSelect?: (companyId: string) => void;
   /** Offered on the companies page, pointless on the desk itself. */
   showDeskLink?: boolean;
 }) {
@@ -219,13 +251,27 @@ export default function CompanyPanel({
   }
 
   return (
-    <Overlay label={company.name} onClose={onClose} widthClassName="max-w-2xl">
+    // Reading closes on the backdrop and on Escape, as every panel does.
+    // Editing does not: the same eight-field form as the add panel, filled
+    // in from the same other browser window, and losing it to a stray click
+    // is the same twenty minutes.
+    <Overlay
+      label={company.name}
+      onClose={onClose}
+      widthClassName="max-w-2xl"
+      dismissible={!isEditing}
+    >
       <div className="flex items-start justify-between gap-4">
         <h3 className="font-display text-lg font-semibold text-foreground">
           {company.name}
         </h3>
-        <div className="flex shrink-0 items-center gap-3">
-          {!isEditing && (
+        {/* While editing, the header offers nothing. `close` beside a
+            half-filled form is a discard button wearing the same clothes
+            as the one on the read view, and it would be the next way to
+            lose the typing this patch is about. Cancel, inside the form,
+            is the deliberate way out. */}
+        {!isEditing && (
+          <div className="flex shrink-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setIsEditing(true)}
@@ -233,15 +279,15 @@ export default function CompanyPanel({
             >
               edit
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="font-mono text-xs text-dim transition-colors hover:text-accent"
-          >
-            close
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="font-mono text-xs text-dim transition-colors hover:text-accent"
+            >
+              close
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mt-4">
@@ -256,7 +302,11 @@ export default function CompanyPanel({
             onCancel={() => setIsEditing(false)}
           />
         ) : (
-          <CompanyDetails company={company} index={index} />
+          <CompanyDetails
+            company={company}
+            index={index}
+            onSelect={onSelect}
+          />
         )}
       </div>
 

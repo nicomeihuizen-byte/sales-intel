@@ -23,6 +23,16 @@ export interface Company {
   // not prospect_intent (which belongs to the slot, not the company, and
   // is supposed to go stale).
   description: string | null;
+  // The research. Ownership, who signs, how you got in, what the group
+  // looks like: the long-form sibling of `description`, and stable in the
+  // same way. No date on it, nothing that decays.
+  //
+  // Not a notes field, and the name is doing that work. A note is
+  // something that happened, it belongs to a deal or a contact, and
+  // listNotesForAnalysis is what feeds it to the momentum read. Nothing
+  // typed here is ever seen by lib/ai.ts, which is exactly why "spoke to
+  // them again" must not end up in it.
+  background: string | null;
   // One free-text address rather than street/postcode/city broken out.
   // Addresses get pasted in as a block, and nothing here sorts on the
   // parts. `country` is separate because it is the one part used on its

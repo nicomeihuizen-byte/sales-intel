@@ -5,6 +5,7 @@ import {
   listCompanyIndex,
   MAX_PROSPECTS,
 } from "@/lib/companies";
+import { listDealsForUser } from "@/lib/deals";
 import AppNav from "@/components/AppNav";
 import CompanyList from "@/components/CompanyList";
 import NewCompanyForm from "@/components/NewCompanyForm";
@@ -20,12 +21,19 @@ import TerminalShell from "@/components/TerminalShell";
 export default async function CompaniesPage() {
   const supabase = await createServerSupabaseClient();
 
-  // Two queries at once rather than one after the other. The index is the
-  // four columns the group tree and the "part of" picker need for every
-  // company, including the ones this page is not drawing a row for.
-  const [companies, index] = await Promise.all([
+  // Three queries at once rather than one after the other. The index is
+  // the four columns the group tree and the "part of" picker need for
+  // every company, including the ones this page is not drawing a row for.
+  //
+  // Every deal, in one query, grouped in the browser rather than fetched
+  // per company. A round trip each time a row is clicked would be the
+  // waterfall this app already paid for once on the desk, and the whole
+  // book is a few hundred rows: the network is the expensive part here,
+  // not the filter.
+  const [companies, index, deals] = await Promise.all([
     listCompaniesForUser(supabase),
     listCompanyIndex(supabase),
+    listDealsForUser(supabase),
   ]);
 
   const prospects = companies.filter((company) => company.prospect_since);
@@ -50,7 +58,7 @@ export default async function CompaniesPage() {
           </h1>
           <p className="mt-1 text-sm text-muted">
             {companies.length} in the book. Pick up to {MAX_PROSPECTS} to work
-            on the desk.
+            with on the desk.
           </p>
         </div>
         <AppNav current="companies" />
@@ -92,9 +100,14 @@ export default async function CompaniesPage() {
 
       {/* The scrolling region. min-h-0 is what lets it shrink below its own
           content instead of pushing the add form off the bottom. */}
-      <div className="scroll-pane mt-5 min-h-0 flex-1 overflow-y-auto rounded border border-line">
+      {/* The overflow moved inside CompanyList: the two panes scroll
+          independently, so a long book does not drag the deals pane down
+          with it, and each pane keeps its own sort header pinned. This
+          wrapper is now only the frame. */}
+      <div className="mt-5 min-h-0 flex-1 overflow-hidden rounded border border-line">
         <CompanyList
           companies={companies}
+          deals={deals}
           index={index}
           slotsFull={slotsFull}
         />

@@ -1,0 +1,1075 @@
+diff --git a/app/actions.ts b/app/actions.ts
+index 3eb8cb6..dce172f 100644
+--- a/app/actions.ts
++++ b/app/actions.ts
+@@ -108,6 +108,7 @@ function companyInputFromForm(formData: FormData): CompanyInput | null {
+   return {
+     name,
+     description: optional("description"),
++    background: optional("background"),
+     address: optional("address"),
+     country: optional("country"),
+     website: optional("website"),
+diff --git a/app/companies/page.tsx b/app/companies/page.tsx
+index d1c8764..e62af46 100644
+--- a/app/companies/page.tsx
++++ b/app/companies/page.tsx
+@@ -5,6 +5,7 @@ import {
+   listCompanyIndex,
+   MAX_PROSPECTS,
+ } from "@/lib/companies";
++import { listDealsForUser } from "@/lib/deals";
+ import AppNav from "@/components/AppNav";
+ import CompanyList from "@/components/CompanyList";
+ import NewCompanyForm from "@/components/NewCompanyForm";
+@@ -20,12 +21,19 @@ import TerminalShell from "@/components/TerminalShell";
+ export default async function CompaniesPage() {
+   const supabase = await createServerSupabaseClient();
+ 
+-  // Two queries at once rather than one after the other. The index is the
+-  // four columns the group tree and the "part of" picker need for every
+-  // company, including the ones this page is not drawing a row for.
+-  const [companies, index] = await Promise.all([
++  // Three queries at once rather than one after the other. The index is
++  // the four columns the group tree and the "part of" picker need for
++  // every company, including the ones this page is not drawing a row for.
++  //
++  // Every deal, in one query, grouped in the browser rather than fetched
++  // per company. A round trip each time a row is clicked would be the
++  // waterfall this app already paid for once on the desk, and the whole
++  // book is a few hundred rows: the network is the expensive part here,
++  // not the filter.
++  const [companies, index, deals] = await Promise.all([
+     listCompaniesForUser(supabase),
+     listCompanyIndex(supabase),
++    listDealsForUser(supabase),
+   ]);
+ 
+   const prospects = companies.filter((company) => company.prospect_since);
+@@ -50,7 +58,7 @@ export default async function CompaniesPage() {
+           </h1>
+           <p className="mt-1 text-sm text-muted">
+             {companies.length} in the book. Pick up to {MAX_PROSPECTS} to work
+-            on the desk.
++            with on the desk.
+           </p>
+         </div>
+         <AppNav current="companies" />
+@@ -92,9 +100,14 @@ export default async function CompaniesPage() {
+ 
+       {/* The scrolling region. min-h-0 is what lets it shrink below its own
+           content instead of pushing the add form off the bottom. */}
+-      <div className="scroll-pane mt-5 min-h-0 flex-1 overflow-y-auto rounded border border-line">
++      {/* The overflow moved inside CompanyList: the two panes scroll
++          independently, so a long book does not drag the deals pane down
++          with it, and each pane keeps its own sort header pinned. This
++          wrapper is now only the frame. */}
++      <div className="mt-5 min-h-0 flex-1 overflow-hidden rounded border border-line">
+         <CompanyList
+           companies={companies}
++          deals={deals}
+           index={index}
+           slotsFull={slotsFull}
+         />
+diff --git a/app/deals/page.tsx b/app/deals/page.tsx
+index 20934db..151ae0a 100644
+--- a/app/deals/page.tsx
++++ b/app/deals/page.tsx
+@@ -1,31 +1,23 @@
+ import Link from "next/link";
+ import { createServerSupabaseClient } from "@/lib/supabase";
+ import { listDealsForUser } from "@/lib/deals";
+-import type { DealStatus } from "@/lib/types";
++import {
++  EURO,
++  STATUS_LABEL,
++  STATUS_STYLE,
++  formatDealValue,
++} from "@/lib/dealDisplay";
+ import AppNav from "@/components/AppNav";
+ import NewDealForm from "@/components/NewDealForm";
+ import TerminalShell from "@/components/TerminalShell";
+ 
+ // Every deal, across every company. The reference list, in the same shape
+ // as the companies page: one screen tall, the list scrolling inside it.
+-
+-const STATUS_LABEL: Record<DealStatus, string> = {
+-  open: "open",
+-  won: "won",
+-  lost: "lost",
+-};
+-
+-const STATUS_STYLE: Record<DealStatus, string> = {
+-  open: "text-accent2",
+-  won: "text-ok",
+-  lost: "text-dim",
+-};
+-
+-const EURO = new Intl.NumberFormat("nl-NL", {
+-  style: "currency",
+-  currency: "EUR",
+-  maximumFractionDigits: 0,
+-});
++//
++// The formatter and the two status maps used to be declared here. They now
++// live in lib/dealDisplay.ts because the companies page renders deals too,
++// and two copies of "what a won deal looks like" is how the two screens
++// end up disagreeing about it.
+ 
+ export default async function DealsPage() {
+   const supabase = await createServerSupabaseClient();
+@@ -80,7 +72,7 @@ export default async function DealsPage() {
+ 
+                   <span className="shrink-0 text-right">
+                     <span className="block font-mono text-sm text-muted">
+-                      {deal.value_eur === null ? "–" : EURO.format(deal.value_eur)}
++                      {formatDealValue(deal.value_eur)}
+                     </span>
+                     <span
+                       className={`mt-0.5 block font-mono text-xs uppercase ${STATUS_STYLE[deal.status]}`}
+diff --git a/components/CompanyFields.tsx b/components/CompanyFields.tsx
+index 89cf313..e4eb0ec 100644
+--- a/components/CompanyFields.tsx
++++ b/components/CompanyFields.tsx
+@@ -126,6 +126,29 @@ export default function CompanyFields({
+         />
+       </label>
+ 
++      {/* The research, under the description and in the same class as it:
++          who owns them, who signs, what the group looks like, how you got
++          in. Stable facts with no date on them.
++
++          Called Background and not Notes on purpose. A note is something
++          that happened, it hangs off a deal or a contact, and
++          listNotesForAnalysis is what carries it into the momentum read.
++          Nothing typed in this box is ever seen by lib/ai.ts, so a line
++          like "chased her again, no reply" would be a fact the one
++          feature this product has would never learn. The label is the
++          only thing standing between those two, which is why it is not
++          the word he asked for. */}
++      <label className="flex flex-col gap-1 font-mono text-xs text-muted">
++        Background
++        <textarea
++          name="background"
++          rows={5}
++          defaultValue={company?.background ?? ""}
++          placeholder="Ownership, who decides, the way in. Not what happened today - that is a note on a deal."
++          className={inputClass}
++        />
++      </label>
++
+       {/* One box, not four. Nobody types an address a field at a time;
+           they paste the block off a website footer or an invoice, and
+           this app never sorts on the parts. Country is separate below
+diff --git a/components/CompanyList.tsx b/components/CompanyList.tsx
+index 7f1904d..1915ec5 100644
+--- a/components/CompanyList.tsx
++++ b/components/CompanyList.tsx
+@@ -1,39 +1,187 @@
+ "use client";
+ 
+-import { useState } from "react";
++import Link from "next/link";
++import { useMemo, useState } from "react";
+ import CompanyPanel from "@/components/CompanyPanel";
+ import ProspectToggle from "@/components/ProspectToggle";
++import {
++  STATUS_LABEL,
++  STATUS_STYLE,
++  EURO,
++  formatDealValue,
++} from "@/lib/dealDisplay";
+ import type { CompanyIndexEntry, CompanyWithCounts } from "@/lib/companies";
++import type { DealWithCompany } from "@/lib/deals";
+ 
+ /**
+- * The book: every company you have ever spoken to, with the pick control
+- * on each row.
++ * The book, in two panes: every company on the left, the selected
++ * company's deals on the right.
+  *
+- * Clicking a row opens that company's details. It used to navigate to the
+- * desk, which was wrong in a way worth writing down: the desk shows the
+- * five you have picked, so clicking any company that was not one of them
+- * landed you on a screen with an unselected company's contacts floating in
+- * the middle pane and nothing in the app saying which company they
+- * belonged to. The link was doing something the destination could not
+- * honour. The details are what you actually wanted from a row in a
+- * reference list, and for a company that IS in your five the panel offers
+- * the desk link, where it works.
++ * The second pane is the answer to a question the single list could not
++ * answer. "0 deals · 3 contacts" on a row tells you a company is empty; it
++ * does not tell you what the ones that are not empty are worth, and
++ * checking meant leaving for /deals and coming back having lost your
++ * place. With twenty companies in the book, the scan you actually do is
++ * "who has nothing on them", and that is a comparison between two columns,
++ * not a number on a row.
+  *
+- * A client component only because it holds "which row is open". The rows
++ * Selecting and opening are separate, and this is the one real judgement
++ * call in here. Clicking a row used to open the details overlay. Now the
++ * name selects, filling the right pane, and a `details` button opens the
++ * panel. The reason: with deals beside the list, the thing you do fifty
++ * times an evening is look at a company's pipeline, and the thing you do
++ * twice is read its VAT number. The cheap gesture should be the common
++ * one. If that turns out to be the wrong way round after a week of use,
++ * it is two lines to swap.
++ *
++ * A client component because it holds three pieces of screen state: which
++ * row is selected, which panel is open, and the two sort orders. The rows
+  * themselves are still plain data handed down from the server.
+  */
++
++/** How the left pane is ordered. */
++type CompanySort = "name" | "empty" | "deals" | "value";
++
++/** How the right pane is ordered. */
++type DealSort = "value" | "unpriced" | "newest" | "status";
++
++const COMPANY_SORTS: { value: CompanySort; label: string }[] = [
++  { value: "name", label: "A-Z" },
++  { value: "empty", label: "empty first" },
++  { value: "deals", label: "most deals" },
++  { value: "value", label: "biggest pipeline" },
++];
++
++const DEAL_SORTS: { value: DealSort; label: string }[] = [
++  { value: "value", label: "biggest first" },
++  { value: "unpriced", label: "unpriced first" },
++  { value: "newest", label: "newest" },
++  { value: "status", label: "open first" },
++];
++
++/** Where a status sits when sorting by it: what is still live, first. */
++const STATUS_ORDER = { open: 0, won: 1, lost: 2 } as const;
++
++const selectClass =
++  "rounded border border-line bg-background px-1.5 py-0.5 font-mono text-xs text-muted outline-none focus:border-accent";
++
++/**
++ * Open pipeline per company, keyed by company id.
++ *
++ * Open only, and unpriced deals skipped rather than counted as zero, which
++ * is the rule the pipeline strip and the deals page already follow. A won
++ * deal from March is not what "biggest pipeline" is asking about.
++ */
++function openValueByCompany(deals: DealWithCompany[]): Map<string, number> {
++  const totals = new Map<string, number>();
++
++  for (const deal of deals) {
++    if (deal.status !== "open" || deal.value_eur === null) {
++      continue;
++    }
++
++    totals.set(
++      deal.company_id,
++      (totals.get(deal.company_id) ?? 0) + deal.value_eur,
++    );
++  }
++
++  return totals;
++}
++
+ export default function CompanyList({
+   companies,
++  deals,
+   index,
+   slotsFull,
+ }: {
+   companies: CompanyWithCounts[];
++  /** Every deal the user has, grouped into the right pane on selection. */
++  deals: DealWithCompany[];
+   /** Every company, for the group tree and the "part of" picker. */
+   index: CompanyIndexEntry[];
+   slotsFull: boolean;
+ }) {
+   const [openId, setOpenId] = useState<string | null>(null);
++  const [selectedId, setSelectedId] = useState<string | null>(
++    companies[0]?.id ?? null,
++  );
++  const [companySort, setCompanySort] = useState<CompanySort>("name");
++  const [dealSort, setDealSort] = useState<DealSort>("value");
++
+   const open = companies.find((company) => company.id === openId) ?? null;
++  const selected =
++    companies.find((company) => company.id === selectedId) ?? null;
++
++  const openValues = useMemo(() => openValueByCompany(deals), [deals]);
++
++  // Every ordering falls back to the name, so two companies with the same
++  // deal count do not swap places between renders. localeCompare and not
++  // `<`, because Šapoka and Zilinskas are not in ASCII order.
++  const sortedCompanies = useMemo(() => {
++    const byName = (a: CompanyWithCounts, b: CompanyWithCounts) =>
++      a.name.localeCompare(b.name);
++
++    return [...companies].sort((a, b) => {
++      if (companySort === "empty") {
++        return a.deal_count - b.deal_count || byName(a, b);
++      }
++
++      if (companySort === "deals") {
++        return b.deal_count - a.deal_count || byName(a, b);
++      }
++
++      if (companySort === "value") {
++        return (
++          (openValues.get(b.id) ?? 0) - (openValues.get(a.id) ?? 0) ||
++          byName(a, b)
++        );
++      }
++
++      return byName(a, b);
++    });
++  }, [companies, companySort, openValues]);
++
++  const selectedDeals = useMemo(() => {
++    if (!selected) {
++      return [];
++    }
++
++    const mine = deals.filter((deal) => deal.company_id === selected.id);
++    const byTitle = (a: DealWithCompany, b: DealWithCompany) =>
++      a.title.localeCompare(b.title);
++
++    return mine.sort((a, b) => {
++      if (dealSort === "unpriced") {
++        // Unpriced first, then the rest largest-first, so this order is
++        // "what still needs a number, and after that, what matters".
++        const aUnpriced = a.value_eur === null ? 0 : 1;
++        const bUnpriced = b.value_eur === null ? 0 : 1;
++
++        return (
++          aUnpriced - bUnpriced ||
++          (b.value_eur ?? 0) - (a.value_eur ?? 0) ||
++          byTitle(a, b)
++        );
++      }
++
++      if (dealSort === "newest") {
++        return b.created_at.localeCompare(a.created_at) || byTitle(a, b);
++      }
++
++      if (dealSort === "status") {
++        return STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || byTitle(a, b);
++      }
++
++      // Biggest first, and an unpriced deal sorts last rather than as zero:
++      // it has not been valued, so it cannot claim a place in a ranking by
++      // value.
++      const aValue = a.value_eur ?? Number.NEGATIVE_INFINITY;
++      const bValue = b.value_eur ?? Number.NEGATIVE_INFINITY;
++
++      return bValue - aValue || byTitle(a, b);
++    });
++  }, [deals, dealSort, selected]);
+ 
+   if (companies.length === 0) {
+     return (
+@@ -45,44 +193,154 @@ export default function CompanyList({
+ 
+   return (
+     <>
+-      <ul className="divide-y divide-line">
+-        {companies.map((company) => {
+-          const picked = Boolean(company.prospect_since);
+-
+-          return (
+-            <li
+-              key={company.id}
+-              className={`flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-background/40 ${
+-                picked ? "border-l-2 border-l-accent" : ""
+-              }`}
+-            >
+-              {/* A button and not a link, because this opens something on
+-                  the page it is already on. Making it an anchor with no
+-                  href would take it out of the keyboard order and leave
+-                  the browser offering "open in new tab" for a thing that
+-                  has no address. */}
+-              <button
+-                type="button"
+-                onClick={() => setOpenId(company.id)}
+-                className="group min-w-0 flex-1 text-left"
++      <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
++        {/* Left: the book. */}
++        <div className="flex min-h-0 flex-col border-line lg:border-r">
++          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-2">
++            <h2 className="font-mono text-xs text-accent2">
++              {"// companies "}
++              <span className="text-dim">{companies.length}</span>
++            </h2>
++            <label className="flex items-center gap-2 font-mono text-xs text-dim">
++              sort
++              <select
++                value={companySort}
++                onChange={(event) =>
++                  setCompanySort(event.target.value as CompanySort)
++                }
++                className={selectClass}
+               >
+-                <span className="block truncate text-sm font-medium text-foreground group-hover:text-accent">
+-                  {company.name}
+-                </span>
+-                <span className="mt-0.5 block font-mono text-xs text-dim">
+-                  {company.deal_count} deals · {company.contact_count} contacts
+-                </span>
+-              </button>
+-
+-              <ProspectToggle
+-                companyId={company.id}
+-                picked={picked}
+-                slotsFull={slotsFull}
+-              />
+-            </li>
+-          );
+-        })}
+-      </ul>
++                {COMPANY_SORTS.map((option) => (
++                  <option key={option.value} value={option.value}>
++                    {option.label}
++                  </option>
++                ))}
++              </select>
++            </label>
++          </div>
++
++          <ul className="scroll-pane min-h-0 flex-1 divide-y divide-line overflow-y-auto">
++            {sortedCompanies.map((company) => {
++              const picked = Boolean(company.prospect_since);
++              const isSelected = company.id === selectedId;
++              const openValue = openValues.get(company.id) ?? 0;
++
++              return (
++                <li
++                  key={company.id}
++                  className={`flex items-center justify-between gap-3 px-4 py-3 transition-colors ${
++                    isSelected ? "bg-background/60" : "hover:bg-background/40"
++                  } ${picked ? "border-l-2 border-l-accent" : ""}`}
++                >
++                  {/* Selects. A button and not a link, because this fills
++                      the pane beside it on the page it is already on. */}
++                  <button
++                    type="button"
++                    onClick={() => setSelectedId(company.id)}
++                    aria-pressed={isSelected}
++                    className="group min-w-0 flex-1 text-left"
++                  >
++                    <span
++                      className={`block truncate text-sm font-medium group-hover:text-accent ${
++                        isSelected ? "text-accent" : "text-foreground"
++                      }`}
++                    >
++                      {company.name}
++                    </span>
++                    <span className="mt-0.5 block font-mono text-xs text-dim">
++                      {company.deal_count} deals · {company.contact_count}{" "}
++                      contacts
++                      {/* Only when there is one. A company with nothing
++                          open should read as empty, not as € 0. */}
++                      {openValue > 0 && ` · ${EURO.format(openValue)} open`}
++                    </span>
++                  </button>
++
++                  <button
++                    type="button"
++                    onClick={() => setOpenId(company.id)}
++                    aria-label={`Details for ${company.name}`}
++                    className="shrink-0 font-mono text-xs text-dim transition-colors hover:text-accent"
++                  >
++                    details
++                  </button>
++
++                  <ProspectToggle
++                    companyId={company.id}
++                    picked={picked}
++                    slotsFull={slotsFull}
++                  />
++                </li>
++              );
++            })}
++          </ul>
++        </div>
++
++        {/* Right: what is actually on the selected company. */}
++        <div className="flex min-h-0 flex-col border-t border-line lg:border-t-0">
++          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-2">
++            <h2 className="min-w-0 font-mono text-xs text-accent2">
++              {"// deals "}
++              <span className="truncate text-dim">
++                {selected ? selected.name : "nothing selected"}
++              </span>
++            </h2>
++            {selectedDeals.length > 1 && (
++              <label className="flex items-center gap-2 font-mono text-xs text-dim">
++                sort
++                <select
++                  value={dealSort}
++                  onChange={(event) =>
++                    setDealSort(event.target.value as DealSort)
++                  }
++                  className={selectClass}
++                >
++                  {DEAL_SORTS.map((option) => (
++                    <option key={option.value} value={option.value}>
++                      {option.label}
++                    </option>
++                  ))}
++                </select>
++              </label>
++            )}
++          </div>
++
++          <div className="scroll-pane min-h-0 flex-1 overflow-y-auto">
++            {selectedDeals.length === 0 ? (
++              <p className="px-4 py-6 text-sm text-muted">
++                {selected
++                  ? `Nothing on ${selected.name} yet.`
++                  : "Pick a company on the left."}
++              </p>
++            ) : (
++              <ul className="divide-y divide-line">
++                {selectedDeals.map((deal) => (
++                  <li key={deal.id}>
++                    <Link
++                      href={`/deals/${deal.id}`}
++                      className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-background/40"
++                    >
++                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
++                        {deal.title}
++                      </span>
++                      <span className="shrink-0 text-right">
++                        <span className="block font-mono text-sm text-muted">
++                          {formatDealValue(deal.value_eur)}
++                        </span>
++                        <span
++                          className={`mt-0.5 block font-mono text-xs uppercase ${STATUS_STYLE[deal.status]}`}
++                        >
++                          {STATUS_LABEL[deal.status]}
++                        </span>
++                      </span>
++                    </Link>
++                  </li>
++                ))}
++              </ul>
++            )}
++          </div>
++        </div>
++      </div>
+ 
+       {/* Keyed on the id so switching from one company to another remounts
+           the panel. Without it the edit form's uncontrolled inputs would
+@@ -94,6 +352,14 @@ export default function CompanyList({
+           company={open}
+           index={index}
+           onClose={() => setOpenId(null)}
++          // Clicking a name in the group tree walks the panel to that
++          // company and selects it behind, so closing the overlay leaves
++          // you on the company you walked to rather than the one you
++          // started from.
++          onSelect={(companyId) => {
++            setOpenId(companyId);
++            setSelectedId(companyId);
++          }}
+           showDeskLink
+         />
+       )}
+diff --git a/components/CompanyPanel.tsx b/components/CompanyPanel.tsx
+index f13a3a3..405f0a2 100644
+--- a/components/CompanyPanel.tsx
++++ b/components/CompanyPanel.tsx
+@@ -86,12 +86,16 @@ function LinkOrText({
+ function CompanyDetails({
+   company,
+   index,
++  onSelect,
+ }: {
+   company: Company;
+   index: CompanyIndexEntry[];
++  /** Passed through to the tree, so a name in the group is clickable. */
++  onSelect?: (companyId: string) => void;
+ }) {
+   const hasAny = Boolean(
+     company.description ||
++      company.background ||
+       company.address ||
+       company.country ||
+       company.phone ||
+@@ -110,7 +114,11 @@ function CompanyDetails({
+           do, the address, the numbers and how to reach them.
+         </p>
+         <div className="mt-5">
+-          <CompanyTree companyId={company.id} index={index} />
++          <CompanyTree
++            companyId={company.id}
++            index={index}
++            onSelect={onSelect}
++          />
+         </div>
+       </>
+     );
+@@ -118,13 +126,28 @@ function CompanyDetails({
+ 
+   return (
+     <div className="flex flex-col gap-2.5">
+-      {/* First, because it is the one line that makes the name mean
+-          something again three weeks later. */}
+-      <Row label="What they do">
+-        {company.description && (
+-          <span className="whitespace-pre-wrap">{company.description}</span>
+-        )}
+-      </Row>
++      {/* The two prose blocks sit above the field rows and are spaced away
++          from them, because they are a different kind of thing. Everything
++          below is one short value on one line; these two are paragraphs,
++          and running a wrapped paragraph straight into "Address" at the
++          same 10px gap made the description look like the first line of
++          the address. The rows keep their tight rhythm, the prose gets
++          air. */}
++      <div className="flex flex-col gap-2.5 pb-2">
++        {/* First, because it is the one line that makes the name mean
++            something again three weeks later. */}
++        <Row label="What they do">
++          {company.description && (
++            <span className="whitespace-pre-wrap">{company.description}</span>
++          )}
++        </Row>
++        <Row label="Background">
++          {company.background && (
++            <span className="whitespace-pre-wrap">{company.background}</span>
++          )}
++        </Row>
++      </div>
++
+       <Row label="Address">
+         {company.address && (
+           // The address was pasted in as a block, so it is printed as one.
+@@ -186,7 +209,7 @@ function CompanyDetails({
+           for a company standing on its own, because a heading called
+           "group" over a single name is worse than no heading. */}
+       <div className="mt-2 border-t border-line pt-3">
+-        <CompanyTree companyId={company.id} index={index} />
++        <CompanyTree companyId={company.id} index={index} onSelect={onSelect} />
+       </div>
+     </div>
+   );
+@@ -196,12 +219,21 @@ export default function CompanyPanel({
+   company,
+   index,
+   onClose,
++  onSelect,
+   showDeskLink = false,
+ }: {
+   company: Company;
+   /** Every company, for the group tree and the "part of" picker. */
+   index: CompanyIndexEntry[];
+   onClose: () => void;
++  /**
++   * Switch the panel to another company, given when the caller holds every
++   * company and can therefore honour the request. That is the companies
++   * page; the desk holds only your five, so it passes nothing and the
++   * group tree stays plain text there rather than offering a link to a
++   * company the destination cannot show.
++   */
++  onSelect?: (companyId: string) => void;
+   /** Offered on the companies page, pointless on the desk itself. */
+   showDeskLink?: boolean;
+ }) {
+@@ -219,13 +251,27 @@ export default function CompanyPanel({
+   }
+ 
+   return (
+-    <Overlay label={company.name} onClose={onClose} widthClassName="max-w-2xl">
++    // Reading closes on the backdrop and on Escape, as every panel does.
++    // Editing does not: the same eight-field form as the add panel, filled
++    // in from the same other browser window, and losing it to a stray click
++    // is the same twenty minutes.
++    <Overlay
++      label={company.name}
++      onClose={onClose}
++      widthClassName="max-w-2xl"
++      dismissible={!isEditing}
++    >
+       <div className="flex items-start justify-between gap-4">
+         <h3 className="font-display text-lg font-semibold text-foreground">
+           {company.name}
+         </h3>
+-        <div className="flex shrink-0 items-center gap-3">
+-          {!isEditing && (
++        {/* While editing, the header offers nothing. `close` beside a
++            half-filled form is a discard button wearing the same clothes
++            as the one on the read view, and it would be the next way to
++            lose the typing this patch is about. Cancel, inside the form,
++            is the deliberate way out. */}
++        {!isEditing && (
++          <div className="flex shrink-0 items-center gap-3">
+             <button
+               type="button"
+               onClick={() => setIsEditing(true)}
+@@ -233,15 +279,15 @@ export default function CompanyPanel({
+             >
+               edit
+             </button>
+-          )}
+-          <button
+-            type="button"
+-            onClick={onClose}
+-            className="font-mono text-xs text-dim transition-colors hover:text-accent"
+-          >
+-            close
+-          </button>
+-        </div>
++            <button
++              type="button"
++              onClick={onClose}
++              className="font-mono text-xs text-dim transition-colors hover:text-accent"
++            >
++              close
++            </button>
++          </div>
++        )}
+       </div>
+ 
+       <div className="mt-4">
+@@ -256,7 +302,11 @@ export default function CompanyPanel({
+             onCancel={() => setIsEditing(false)}
+           />
+         ) : (
+-          <CompanyDetails company={company} index={index} />
++          <CompanyDetails
++            company={company}
++            index={index}
++            onSelect={onSelect}
++          />
+         )}
+       </div>
+ 
+diff --git a/components/CompanyTree.tsx b/components/CompanyTree.tsx
+index 2277360..76dba47 100644
+--- a/components/CompanyTree.tsx
++++ b/components/CompanyTree.tsx
+@@ -47,6 +47,7 @@ function Branch({
+   currentId,
+   depth,
+   seen,
++  onSelect,
+ }: {
+   entry: CompanyIndexEntry;
+   childrenOf: Map<string | null, CompanyIndexEntry[]>;
+@@ -54,6 +55,7 @@ function Branch({
+   depth: number;
+   /** Ids already drawn on this path, so a cycle cannot recurse forever. */
+   seen: Set<string>;
++  onSelect?: (companyId: string) => void;
+ }) {
+   const isCurrent = entry.id === currentId;
+   const isProspect = Boolean(entry.prospect_since);
+@@ -61,6 +63,14 @@ function Branch({
+     (child) => !seen.has(child.id),
+   );
+ 
++  // The company you already have open is not a link to itself, and a tree
++  // drawn somewhere that cannot switch companies stays plain text. Both
++  // are the same rule: only render something clickable when the click has
++  // somewhere to go.
++  const clickable = Boolean(onSelect) && !isCurrent;
++
++  const nameClass = `text-left text-sm ${isCurrent ? "font-medium" : ""}`;
++
+   return (
+     <li>
+       <div
+@@ -77,12 +87,27 @@ function Branch({
+             └
+           </span>
+         )}
+-        <span
+-          className={`text-sm ${isCurrent ? "font-medium" : ""}`}
+-          aria-current={isCurrent ? "true" : undefined}
+-        >
+-          {entry.name}
+-        </span>
++        {/* A button and not an anchor, for the same reason the company row
++            is one: this swaps what the open panel is showing, on the page
++            it is already on. There is no address to give it, so an anchor
++            would offer "open in new tab" for a destination that does not
++            exist. */}
++        {clickable ? (
++          <button
++            type="button"
++            onClick={() => onSelect?.(entry.id)}
++            className={`${nameClass} underline decoration-line decoration-dotted underline-offset-4 transition-colors hover:text-accent hover:decoration-accent`}
++          >
++            {entry.name}
++          </button>
++        ) : (
++          <span
++            className={nameClass}
++            aria-current={isCurrent ? "true" : undefined}
++          >
++            {entry.name}
++          </span>
++        )}
+         {isProspect && (
+           // The reason the tree is worth drawing at all. Three of your five
+           // in one group is the thing the cap exists to prevent, and
+@@ -106,6 +131,7 @@ function Branch({
+               currentId={currentId}
+               depth={depth + 1}
+               seen={new Set([...seen, child.id])}
++              onSelect={onSelect}
+             />
+           ))}
+         </ul>
+@@ -117,9 +143,18 @@ function Branch({
+ export default function CompanyTree({
+   companyId,
+   index,
++  onSelect,
+ }: {
+   companyId: string;
+   index: CompanyIndexEntry[];
++  /**
++   * Opens another company in the group. Optional: the desk holds only the
++   * five, so it cannot honour a click on a company outside them and the
++   * tree stays plain text there. A link that lands on nothing is the bug
++   * CompanyList's comment already describes, and this is the same one one
++   * level down.
++   */
++  onSelect?: (companyId: string) => void;
+ }) {
+   const byId = new Map(index.map((entry) => [entry.id, entry]));
+   const self = byId.get(companyId);
+@@ -168,6 +203,7 @@ export default function CompanyTree({
+           currentId={companyId}
+           depth={0}
+           seen={new Set([root.id])}
++          onSelect={onSelect}
+         />
+       </ul>
+ 
+diff --git a/components/NewCompanyForm.tsx b/components/NewCompanyForm.tsx
+index 121ddd2..6a5185d 100644
+--- a/components/NewCompanyForm.tsx
++++ b/components/NewCompanyForm.tsx
+@@ -51,11 +51,16 @@ export default function NewCompanyForm({
+         + add company
+       </button>
+ 
++      {/* Locked shut. This form is filled in with a registry page open in
++          another window, so it survives on exactly the clicks that used to
++          empty it: the backdrop and Escape are both dead here, and cancel
++          below is the way out. */}
+       {isOpen && (
+         <Overlay
+           label="Add a company"
+           onClose={() => setIsOpen(false)}
+           widthClassName="max-w-2xl"
++          dismissible={false}
+         >
+           <h3 className="font-display text-lg font-semibold text-foreground">
+             Add a company
+diff --git a/components/Overlay.tsx b/components/Overlay.tsx
+index 039e39a..e94599b 100644
+--- a/components/Overlay.tsx
++++ b/components/Overlay.tsx
+@@ -20,20 +20,43 @@ import { useEffect, type ReactNode } from "react";
+  * An overlay rather than an expanding row, because the desk's three panes
+  * must never move. You open a thing, read it, close it, and everything is
+  * exactly where you left it.
++ *
++ * `dismissible` is the exception, and it exists for one specific failure.
++ * Adding a company means alt-tabbing to a registry page, copying a VAT
++ * number, coming back, pasting, and going again, eight times. Every one of
++ * those returns is a click landing somewhere on this screen, and a click on
++ * the backdrop unmounts the form and takes twenty minutes of typing with
++ * it. So a panel holding a half-filled form sets `dismissible={false}` and
++ * can only be left through cancel or save.
++ *
++ * It stays true by default. A panel you opened to READ costs nothing to
++ * close by accident, and a dialog that refuses to go away when you have
++ * put nothing into it is the more annoying failure of the two.
+  */
+ export default function Overlay({
+   label,
+   onClose,
+   widthClassName = "max-w-4xl",
++  dismissible = true,
+   children,
+ }: {
+   /** Announced to screen readers as the dialog's name. */
+   label: string;
+   onClose: () => void;
+   widthClassName?: string;
++  /**
++   * False while the panel holds unsaved input: the backdrop and Escape
++   * both stop closing it, and the form's own cancel button becomes the
++   * only way out. Always leave a visible one when passing false.
++   */
++  dismissible?: boolean;
+   children: ReactNode;
+ }) {
+   useEffect(() => {
++    if (!dismissible) {
++      return;
++    }
++
+     function onKey(event: KeyboardEvent) {
+       if (event.key === "Escape") {
+         onClose();
+@@ -42,7 +65,7 @@ export default function Overlay({
+ 
+     window.addEventListener("keydown", onKey);
+     return () => window.removeEventListener("keydown", onKey);
+-  }, [onClose]);
++  }, [dismissible, onClose]);
+ 
+   return (
+     <div
+@@ -54,7 +77,7 @@ export default function Overlay({
+       // the target check, a click that starts inside the card and drifts
+       // out while selecting text closes the thing you were reading.
+       onClick={(event) => {
+-        if (event.target === event.currentTarget) {
++        if (dismissible && event.target === event.currentTarget) {
+           onClose();
+         }
+       }}
+diff --git a/lib/companies.ts b/lib/companies.ts
+index 900445c..a262911 100644
+--- a/lib/companies.ts
++++ b/lib/companies.ts
+@@ -24,7 +24,7 @@ export const MAX_PROSPECTS = 5;
+  * query and not the other. Same shape of bug, headed off before it lands.
+  */
+ export const COMPANY_COLUMNS =
+-  "id, user_id, name, created_at, prospect_since, description, address, country, website, email, phone, socials, vat_number, registration_number, parent_id";
++  "id, user_id, name, created_at, prospect_since, description, background, address, country, website, email, phone, socials, vat_number, registration_number, parent_id";
+ 
+ export interface CompanyWithCounts extends Company {
+   deal_count: number;
+@@ -261,6 +261,7 @@ export async function listCompanyIndex(
+ export interface CompanyInput {
+   name: string;
+   description?: string;
++  background?: string;
+   address?: string;
+   country?: string;
+   website?: string;
+@@ -323,6 +324,7 @@ function normalizeCompanyInput(input: CompanyInput) {
+   return {
+     name,
+     description: blankToNull(input.description),
++    background: blankToNull(input.background),
+     address: blankToNull(input.address),
+     country: blankToNull(input.country),
+     website: urlOrNull(input.website, "website"),
+diff --git a/lib/dealDisplay.ts b/lib/dealDisplay.ts
+new file mode 100644
+index 0000000..f7be066
+--- /dev/null
++++ b/lib/dealDisplay.ts
+@@ -0,0 +1,44 @@
++import type { DealStatus } from "./types";
++
++/**
++ * How a deal is rendered, in one place.
++ *
++ * The euro formatter and the two status maps were written out inside
++ * app/deals/page.tsx, and the companies page now needs the same three. A
++ * second copy is how this project produced "€ NaN" (see DEAL_COLUMNS) and
++ * how it nearly ended up with two find-or-create functions for parents.
++ * The rule it keeps rediscovering is the same one: the moment a thing is
++ * needed twice, it moves.
++ *
++ * `nl-NL` and no decimals, because every value in this app is a whole
++ * euro amount typed by a Dutch speaker.
++ */
++export const EURO = new Intl.NumberFormat("nl-NL", {
++  style: "currency",
++  currency: "EUR",
++  maximumFractionDigits: 0,
++});
++
++export const STATUS_LABEL: Record<DealStatus, string> = {
++  open: "open",
++  won: "won",
++  lost: "lost",
++};
++
++export const STATUS_STYLE: Record<DealStatus, string> = {
++  open: "text-accent2",
++  won: "text-ok",
++  lost: "text-dim",
++};
++
++/**
++ * What one deal's value looks like on screen.
++ *
++ * An en dash for null, never "€ 0". Nobody having put a number on a deal
++ * yet is a different fact from the deal being worth nothing, and the
++ * pipeline totals already treat them differently: an unpriced deal is
++ * skipped, not added as zero.
++ */
++export function formatDealValue(valueEur: number | null): string {
++  return valueEur === null ? "–" : EURO.format(valueEur);
++}
+diff --git a/lib/types.ts b/lib/types.ts
+index 2b7b38e..fbfe4d0 100644
+--- a/lib/types.ts
++++ b/lib/types.ts
+@@ -23,6 +23,16 @@ export interface Company {
+   // not prospect_intent (which belongs to the slot, not the company, and
+   // is supposed to go stale).
+   description: string | null;
++  // The research. Ownership, who signs, how you got in, what the group
++  // looks like: the long-form sibling of `description`, and stable in the
++  // same way. No date on it, nothing that decays.
++  //
++  // Not a notes field, and the name is doing that work. A note is
++  // something that happened, it belongs to a deal or a contact, and
++  // listNotesForAnalysis is what feeds it to the momentum read. Nothing
++  // typed here is ever seen by lib/ai.ts, which is exactly why "spoke to
++  // them again" must not end up in it.
++  background: string | null;
+   // One free-text address rather than street/postcode/city broken out.
+   // Addresses get pasted in as a block, and nothing here sorts on the
+   // parts. `country` is separate because it is the one part used on its
+diff --git a/supabase/migrations/20260906210000_company_background.sql b/supabase/migrations/20260906210000_company_background.sql
+new file mode 100644
+index 0000000..e12e42b
+--- /dev/null
++++ b/supabase/migrations/20260906210000_company_background.sql
+@@ -0,0 +1,33 @@
++-- A place to put the research, on the company record.
++--
++-- Asked for as "a pane for notes under the description". It is deliberately
++-- not called notes, and the distinction is the whole reason this file has a
++-- comment on it rather than one line of DDL.
++--
++-- The rule this project already set, in 20260906180000 and in the CHECK on
++-- notes: a note is something that HAPPENED, it has a date, and it belongs to
++-- a deal or a contact so that the timeline shows it and
++-- listNotesForAnalysis can feed it to the momentum read. A free-text notes
++-- box on a company would be none of those things, and the first time
++-- "spoke to Ieva, she is interested" is typed into it, that sentence is
++-- invisible to the one thing this product does that a CRM does not.
++--
++-- What was actually needed is different and real. Adding Ober-Haus means
++-- holding four legal entities, a 70/20/10 ownership split and the fact that
++-- the Lithuanian MD owns a piece of his own parent. None of that is "what
++-- they do", none of it is dated, and there is no deal yet to hang it on.
++-- That is background: stable structural knowledge about who they are, the
++-- same class as the address and the description, just longer.
++--
++-- So: `background`, sibling to `description`, nullable, no date, never read
++-- by lib/ai.ts. If dated company-level activity is wanted later, that is
++-- `notes.company_id` plus a widened CHECK, and it belongs in its own
++-- migration where the confidential rules can be thought about properly.
++--
++-- One column and no index. It is never filtered or sorted on; it is read
++-- when a panel is already open on that row. The company search still to
++-- come (usability log item 6) is where a trigram index across name,
++-- description, address and this column belongs, in one go.
++
++alter table companies
++  add column if not exists background text;

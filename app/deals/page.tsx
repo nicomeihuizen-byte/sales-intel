@@ -1,31 +1,23 @@
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { listDealsForUser } from "@/lib/deals";
-import type { DealStatus } from "@/lib/types";
+import {
+  EURO,
+  STATUS_LABEL,
+  STATUS_STYLE,
+  formatDealValue,
+} from "@/lib/dealDisplay";
 import AppNav from "@/components/AppNav";
 import NewDealForm from "@/components/NewDealForm";
 import TerminalShell from "@/components/TerminalShell";
 
 // Every deal, across every company. The reference list, in the same shape
 // as the companies page: one screen tall, the list scrolling inside it.
-
-const STATUS_LABEL: Record<DealStatus, string> = {
-  open: "open",
-  won: "won",
-  lost: "lost",
-};
-
-const STATUS_STYLE: Record<DealStatus, string> = {
-  open: "text-accent2",
-  won: "text-ok",
-  lost: "text-dim",
-};
-
-const EURO = new Intl.NumberFormat("nl-NL", {
-  style: "currency",
-  currency: "EUR",
-  maximumFractionDigits: 0,
-});
+//
+// The formatter and the two status maps used to be declared here. They now
+// live in lib/dealDisplay.ts because the companies page renders deals too,
+// and two copies of "what a won deal looks like" is how the two screens
+// end up disagreeing about it.
 
 export default async function DealsPage() {
   const supabase = await createServerSupabaseClient();
@@ -80,7 +72,7 @@ export default async function DealsPage() {
 
                   <span className="shrink-0 text-right">
                     <span className="block font-mono text-sm text-muted">
-                      {deal.value_eur === null ? "–" : EURO.format(deal.value_eur)}
+                      {formatDealValue(deal.value_eur)}
                     </span>
                     <span
                       className={`mt-0.5 block font-mono text-xs uppercase ${STATUS_STYLE[deal.status]}`}

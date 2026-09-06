@@ -1,0 +1,33 @@
+-- A place to put the research, on the company record.
+--
+-- Asked for as "a pane for notes under the description". It is deliberately
+-- not called notes, and the distinction is the whole reason this file has a
+-- comment on it rather than one line of DDL.
+--
+-- The rule this project already set, in 20260906180000 and in the CHECK on
+-- notes: a note is something that HAPPENED, it has a date, and it belongs to
+-- a deal or a contact so that the timeline shows it and
+-- listNotesForAnalysis can feed it to the momentum read. A free-text notes
+-- box on a company would be none of those things, and the first time
+-- "spoke to Ieva, she is interested" is typed into it, that sentence is
+-- invisible to the one thing this product does that a CRM does not.
+--
+-- What was actually needed is different and real. Adding Ober-Haus means
+-- holding four legal entities, a 70/20/10 ownership split and the fact that
+-- the Lithuanian MD owns a piece of his own parent. None of that is "what
+-- they do", none of it is dated, and there is no deal yet to hang it on.
+-- That is background: stable structural knowledge about who they are, the
+-- same class as the address and the description, just longer.
+--
+-- So: `background`, sibling to `description`, nullable, no date, never read
+-- by lib/ai.ts. If dated company-level activity is wanted later, that is
+-- `notes.company_id` plus a widened CHECK, and it belongs in its own
+-- migration where the confidential rules can be thought about properly.
+--
+-- One column and no index. It is never filtered or sorted on; it is read
+-- when a panel is already open on that row. The company search still to
+-- come (usability log item 6) is where a trigram index across name,
+-- description, address and this column belongs, in one go.
+
+alter table companies
+  add column if not exists background text;

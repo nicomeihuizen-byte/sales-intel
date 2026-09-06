@@ -51,11 +51,16 @@ export default function NewCompanyForm({
         + add company
       </button>
 
+      {/* Locked shut. This form is filled in with a registry page open in
+          another window, so it survives on exactly the clicks that used to
+          empty it: the backdrop and Escape are both dead here, and cancel
+          below is the way out. */}
       {isOpen && (
         <Overlay
           label="Add a company"
           onClose={() => setIsOpen(false)}
           widthClassName="max-w-2xl"
+          dismissible={false}
         >
           <h3 className="font-display text-lg font-semibold text-foreground">
             Add a company
