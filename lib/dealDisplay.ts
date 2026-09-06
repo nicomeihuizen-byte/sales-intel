@@ -60,10 +60,20 @@ export const MOMENTUM_LABEL: Record<DealMomentum, string> = {
   at_risk: "at risk",
 };
 
+/**
+ * The momentum word in a list.
+ *
+ * Bold in light only. The colour carries the meaning in both themes, but
+ * the light palette has no middle: every accent lands at roughly the same
+ * apparent weight there, so a green "healthy" beside a grey company name
+ * reads as another grey line until you actually read it. Dark already has
+ * that separation from contrast alone and does not need the weight, which
+ * would only make it shout.
+ */
 export const MOMENTUM_STYLE: Record<DealMomentum, string> = {
-  healthy: "text-ok",
-  stalling: "text-warn",
-  at_risk: "text-danger",
+  healthy: "text-ok light:font-semibold",
+  stalling: "text-warn light:font-semibold",
+  at_risk: "text-danger light:font-semibold",
 };
 
 /**

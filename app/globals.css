@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
 /*
+ * A `light:` variant, the mirror of Tailwind's built-in `dark:`.
+ *
+ * app/layout.tsx always stamps `data-theme` on <html>, light or dark, so
+ * this is a plain descendant selector rather than a media query and it
+ * follows the toggle instantly.
+ *
+ * It exists because the two palettes need different weights, not different
+ * colours. Measured on 2026-09-05: the light accents land at 4.70-5.92
+ * against the raised pane while the dark ones reach 6.27-8.70, so a status
+ * word that reads as emphasis on graphite reads as ordinary text on white.
+ * Adding weight in light only is the cheaper half of that fix, ahead of the
+ * palette work still open in the usability log.
+ */
+@custom-variant light ([data-theme="light"] &);
+
+/*
  * Two themes, one set of names.
  *
  * Every colour in this app is a custom property here, and no component

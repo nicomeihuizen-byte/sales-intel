@@ -137,7 +137,12 @@ export default async function DealsPage() {
                       )}
                     </span>
 
-                    <span className="shrink-0 text-right">
+                    {/* A fixed column, not a shrink-wrapped blob. The
+                        value and the status are the two things you compare
+                        down the list, and comparing is what a column is
+                        for: at 9rem "€ 410.000" cannot wrap and every row
+                        starts its number in the same place. */}
+                    <span className="w-36 shrink-0 whitespace-nowrap text-right">
                       <span className="block font-mono text-sm text-muted">
                         {formatDealValue(deal.value_eur)}
                       </span>
