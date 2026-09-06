@@ -53,6 +53,32 @@ export function caseStudyLinkEnabled(): boolean {
 }
 
 /**
+ * Whether opening the deals page may re-analyse the deals that need it.
+ *
+ * Off unless `AUTO_ANALYSIS` is set to "true", and the default direction is
+ * the same one `destructiveActionsEnabled` uses, for a sharper version of
+ * the same reason. A refresh is one paid model call per deal. The hosted
+ * demo is a public page with a one-click login, so a flag that defaulted on
+ * would mean every stranger arriving from the case study spends the API
+ * budget, silently, as fast as they can click.
+ *
+ * Failing closed means a forgotten config leaves a deployment without
+ * automatic colours, which is visible and free. The other direction fails
+ * invisibly and on an invoice.
+ *
+ * Checked in the server action as well as where the trigger renders. Not
+ * rendering the trigger hides nothing: a server action is an HTTP endpoint
+ * whether or not anything on the page points at it, and that second check
+ * is the one that matters.
+ *
+ * Server-only, like the two above. Never import this from a "use client"
+ * file: see components/LoginForm.tsx for what that costs.
+ */
+export function autoAnalysisEnabled(): boolean {
+  return process.env.AUTO_ANALYSIS?.trim().toLowerCase() === "true";
+}
+
+/**
  * Which theme a visitor with no cookie yet gets.
  *
  * Light unless `DEFAULT_THEME` says "dark", which is the same direction as

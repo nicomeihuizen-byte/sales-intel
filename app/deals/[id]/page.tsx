@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { getDealById } from "@/lib/deals";
 import { listNotesForDeal } from "@/lib/notes";
+import { listDealInsightViews, listStaleOpenDealIds } from "@/lib/insights";
+import { autoAnalysisEnabled } from "@/lib/featureFlags";
 import NoteForm from "@/components/NoteForm";
 import InsightPanel from "@/components/InsightPanel";
 import NoteList from "@/components/NoteList";
@@ -13,9 +15,7 @@ interface DealDetailPageProps {
   params: Promise<{ id: string }>;
 }
 
-export default async function DealDetailPage({
-  params,
-}: DealDetailPageProps) {
+export default async function DealDetailPage({ params }: DealDetailPageProps) {
   const { id } = await params;
   const supabase = await createServerSupabaseClient();
 
@@ -26,6 +26,24 @@ export default async function DealDetailPage({
   }
 
   const notes = await listNotesForDeal(supabase, deal.id);
+
+  // Only an open deal has a momentum row: the insight route drops it when
+  // a deal is marked won or lost, so asking for one on a closed deal would
+  // always come back empty.
+  const storedInsight =
+    deal.status === "open"
+      ? ((await listDealInsightViews(supabase)).find(
+          (view) => view.dealId === deal.id,
+        ) ?? null)
+      : null;
+
+  // Whether to re-read this deal without being asked. Decided here rather
+  // than in the browser, because each run is a paid model call and a value
+  // arriving from the client is one the client could have invented.
+  const autoRun =
+    autoAnalysisEnabled() &&
+    deal.status === "open" &&
+    (await listStaleOpenDealIds(supabase, [deal.id])).length > 0;
 
   return (
     <TerminalShell label={`~/deals/${deal.id.slice(0, 8)}`}>
@@ -46,7 +64,20 @@ export default async function DealDetailPage({
         <DealStatusPicker dealId={deal.id} status={deal.status} />
       </div>
 
-      <InsightPanel dealId={deal.id} dealStatus={deal.status} />
+      <InsightPanel
+        dealId={deal.id}
+        dealStatus={deal.status}
+        storedInsight={
+          storedInsight
+            ? {
+                momentum: storedInsight.momentum,
+                reasoning: storedInsight.reasoning,
+                age: storedInsight.age,
+              }
+            : null
+        }
+        autoRun={autoRun}
+      />
 
       <NoteForm dealId={deal.id} />
 

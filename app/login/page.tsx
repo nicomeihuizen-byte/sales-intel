@@ -1,89 +1,27 @@
-"use client";
-
-import { useActionState, useState } from "react";
-import { signIn, signUp, type AuthActionState } from "./actions";
+import LoginForm from "@/components/LoginForm";
 import TerminalShell from "@/components/TerminalShell";
 
-const initialActionState: AuthActionState = { error: null, message: null };
-
+/**
+ * The login page.
+ *
+ * A Server Component, deliberately, and the reason is worth keeping: this
+ * file used to start with `"use client"` and render `TerminalShell`
+ * itself, which shipped the shell to the browser. The shell reads
+ * `SHOW_CASE_STUDY_LINK` through `caseStudyLinkEnabled()`, that variable
+ * exists only on the server, and so the two renders disagreed about
+ * whether to draw the header. Hydration failed on local, where the
+ * variable is set to false, and passed on hosted, where it is unset and
+ * both sides guessed the same default.
+ *
+ * The interactive half now lives in components/LoginForm.tsx. Everything
+ * a page needs from the client belongs in a leaf, not at the top: put
+ * `"use client"` on the page and every component it renders goes with it,
+ * including the ones that read server-only configuration.
+ */
 export default function LoginPage() {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
-  const [signInState, signInFormAction, signInPending] = useActionState(
-    signIn,
-    initialActionState,
-  );
-  const [signUpState, signUpFormAction, signUpPending] = useActionState(
-    signUp,
-    initialActionState,
-  );
-
-  const isSignIn = mode === "sign-in";
-  const formAction = isSignIn ? signInFormAction : signUpFormAction;
-  const actionState = isSignIn ? signInState : signUpState;
-  const isPending = isSignIn ? signInPending : signUpPending;
-
   return (
     <TerminalShell label="~/login" maxWidthClassName="max-w-sm">
-      <h1 className="font-display text-2xl font-semibold text-accent">
-        {isSignIn ? "Log in" : "Sign up"}
-      </h1>
-      <p className="mt-2 text-muted">
-        {isSignIn
-          ? "Log in to see your deals."
-          : "Create an account to start tracking deals."}
-      </p>
-
-      <form action={formAction} className="mt-6 flex flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm text-muted">
-          Email
-          <input
-            type="email"
-            name="email"
-            required
-            autoComplete="email"
-            className="rounded border border-line bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1 text-sm text-muted">
-          Password
-          <input
-            type="password"
-            name="password"
-            required
-            minLength={6}
-            autoComplete={isSignIn ? "current-password" : "new-password"}
-            className="rounded border border-line bg-background px-3 py-2 text-base text-foreground outline-none focus:border-accent"
-          />
-        </label>
-
-        {actionState.error && (
-          <p role="alert" className="text-sm text-danger">
-            {actionState.error}
-          </p>
-        )}
-        {actionState.message && (
-          <p role="status" className="text-sm text-accent">
-            {actionState.message}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={isPending}
-          className="rounded bg-accent px-4 py-2 font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {isPending ? "Please wait..." : isSignIn ? "Log in" : "Sign up"}
-        </button>
-      </form>
-
-      <button
-        type="button"
-        onClick={() => setMode(isSignIn ? "sign-up" : "sign-in")}
-        className="mt-4 font-mono text-sm text-muted underline decoration-line underline-offset-4 hover:text-accent"
-      >
-        {isSignIn ? "Need an account? Sign up" : "Already have an account? Log in"}
-      </button>
+      <LoginForm />
     </TerminalShell>
   );
 }

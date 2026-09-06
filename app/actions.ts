@@ -24,7 +24,11 @@ import {
   type ContactEmailDraft,
 } from "@/lib/ai";
 import { isDraftLanguage, type DraftLanguage } from "@/lib/draftLanguages";
-import { forgetDealInsight, recordDealInsight } from "@/lib/insights";
+import {
+  forgetDealInsight,
+  listStaleOpenDealIds,
+  recordDealInsight,
+} from "@/lib/insights";
 import {
   createDealForCompany,
   deleteDeal,
@@ -33,8 +37,17 @@ import {
   parseEuroInput,
   updateDealValue,
 } from "@/lib/deals";
-import { defaultTheme, destructiveActionsEnabled } from "@/lib/featureFlags";
-import { isTheme, THEME_COOKIE, THEME_COOKIE_MAX_AGE, type Theme } from "@/lib/theme";
+import {
+  autoAnalysisEnabled,
+  defaultTheme,
+  destructiveActionsEnabled,
+} from "@/lib/featureFlags";
+import {
+  isTheme,
+  THEME_COOKIE,
+  THEME_COOKIE_MAX_AGE,
+  type Theme,
+} from "@/lib/theme";
 import {
   createContact,
   deleteContact,
@@ -68,7 +81,9 @@ function contactInputFromForm(formData: FormData): ContactInput | null {
   // lib/contacts.ts trims, drops the blanks and de-duplicates, so a submit
   // carrying an empty row is normal input rather than an error.
   const list = (field: string) =>
-    formData.getAll(field).filter((value): value is string => typeof value === "string");
+    formData
+      .getAll(field)
+      .filter((value): value is string => typeof value === "string");
 
   return {
     name,
@@ -207,8 +222,7 @@ export async function updateCompanyAction(
     await updateCompany(supabase, userId, companyId, input);
   } catch (error) {
     return {
-      error:
-        error instanceof Error ? error.message : "Failed to save company.",
+      error: error instanceof Error ? error.message : "Failed to save company.",
     };
   }
 
@@ -282,8 +296,7 @@ export async function createContactAction(
     await createContact(supabase, userId, companyId, input);
   } catch (error) {
     return {
-      error:
-        error instanceof Error ? error.message : "Failed to add contact.",
+      error: error instanceof Error ? error.message : "Failed to add contact.",
     };
   }
 
@@ -530,6 +543,106 @@ export interface RefreshState {
  * contribution to the score, not the other eleven, so failures are counted
  * and reported rather than thrown.
  */
+/**
+ * Re-analyses only the open deals whose stored reading no longer matches
+ * their notes. Called once by the deals page when it loads.
+ *
+ * This is the automatic half of the traffic light, and every constraint on
+ * it is there for a named reason.
+ *
+ * **Stale, not "all open".** `listStaleOpenDealIds` returns the deals that
+ * have notes the model may read and either have never been analysed or
+ * have had a note change since. Refreshing on every page load instead
+ * would spend one paid call per open deal per visit, on notes that had not
+ * moved, and would give the same answer every time.
+ *
+ * **The flag is checked here and not only where the trigger renders.** A
+ * server action is an HTTP endpoint whether or not a page points at it, so
+ * not drawing the trigger on the demo would hide the button and leave the
+ * endpoint open. Same argument as destructiveActionsEnabled.
+ *
+ * **Capped at MAX_DEALS_PER_REFRESH.** A first run against a book with
+ * forty unanalysed deals is exactly the fan-out the ceiling exists for.
+ * What is left over is still stale, so the next visit picks it up.
+ *
+ * Returns the same RefreshState as refreshPipelineAction, so the trigger
+ * can say what it spent.
+ */
+export async function refreshStaleDealsAction(): Promise<RefreshState> {
+  const idle: RefreshState = { error: null, analyzed: 0, failed: 0 };
+
+  if (!autoAnalysisEnabled()) {
+    return idle;
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { ...idle, error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  let stale;
+
+  try {
+    const deals = await listDealsForUser(supabase);
+    const openIds = deals
+      .filter((deal) => deal.status === "open")
+      .map((deal) => deal.id);
+
+    const staleIds = new Set(await listStaleOpenDealIds(supabase, openIds));
+
+    stale = deals
+      .filter((deal) => staleIds.has(deal.id))
+      .slice(0, MAX_DEALS_PER_REFRESH);
+  } catch (error) {
+    return {
+      ...idle,
+      error: error instanceof Error ? error.message : "Failed to load deals.",
+    };
+  }
+
+  if (stale.length === 0) {
+    return idle;
+  }
+
+  let analyzed = 0;
+  let failed = 0;
+
+  for (const deal of stale) {
+    try {
+      const notes = await listNotesForAnalysis(supabase, deal.id);
+      const insight = await analyzeDealMomentum(deal.title, notes);
+      await recordDealInsight(
+        supabase,
+        userId,
+        deal.id,
+        insight.status,
+        insight.reasoning,
+      );
+      analyzed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  // Only when something was actually written. A revalidation that changes
+  // nothing still throws away the rendered page and costs a round trip.
+  if (analyzed > 0) {
+    revalidateWorkspace();
+  }
+
+  return {
+    error:
+      failed > 0
+        ? `${failed} deal${failed === 1 ? "" : "s"} could not be analysed. Open one and press Analyze to see why.`
+        : null,
+    analyzed,
+    failed,
+  };
+}
+
 export async function refreshPipelineAction(
   previousState: RefreshState,
 ): Promise<RefreshState> {
@@ -917,7 +1030,8 @@ export async function logEmailAction(
     return { error: null };
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : "Failed to log the email.",
+      error:
+        error instanceof Error ? error.message : "Failed to log the email.",
     };
   }
 }

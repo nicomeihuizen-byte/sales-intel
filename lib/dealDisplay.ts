@@ -1,4 +1,4 @@
-import type { DealMomentum, DealStatus } from "./types";
+import type { DealInsightRecord, DealMomentum, DealStatus } from "./types";
 
 /**
  * How a deal is rendered, in one place.
@@ -80,3 +80,64 @@ export const MOMENTUM_EDGE: Record<DealMomentum, string> = {
   stalling: "border-l-2 border-l-warn",
   at_risk: "border-l-2 border-l-danger",
 };
+
+/**
+ * A stored momentum read, with its age already turned into words.
+ *
+ * The age is precomputed rather than derived where it is drawn, and that
+ * is not a style choice. `CompanyList` is a client component: a label
+ * built from `Date.now()` inside it would be computed once on the server
+ * and again in the browser, and the two would disagree the moment a render
+ * straddles midnight. That is the same class of fault that took down the
+ * login page. One clock, read on the server, passed down as a string.
+ */
+export interface DealInsightView {
+  dealId: string;
+  momentum: DealMomentum;
+  reasoning: string;
+  /** "today", "yesterday", "6 days ago". */
+  age: string;
+}
+
+/**
+ * How long ago an analysis was run, in words.
+ *
+ * Days and not hours, because the question this answers is "can I still
+ * trust this reading", and that is measured in how many working days have
+ * passed rather than in how many times the clock has gone round.
+ *
+ * `nowMs` is a parameter and not `Date.now()` so the whole list is dated
+ * against one instant, and so this is testable without freezing time.
+ */
+export function analysisAge(analyzedAt: string, nowMs: number): string {
+  const elapsedMs = nowMs - new Date(analyzedAt).getTime();
+  const days = Math.floor(elapsedMs / 86_400_000);
+
+  if (days <= 0) {
+    return "today";
+  }
+
+  if (days === 1) {
+    return "yesterday";
+  }
+
+  return `${days} days ago`;
+}
+
+/**
+ * Turns the stored rows into what a list needs to draw.
+ *
+ * Call this in a Server Component, once, with a single `nowMs`. Every
+ * consumer then works from the same strings.
+ */
+export function toInsightViews(
+  records: DealInsightRecord[],
+  nowMs: number,
+): DealInsightView[] {
+  return records.map((record) => ({
+    dealId: record.deal_id,
+    momentum: record.momentum,
+    reasoning: record.reasoning,
+    age: analysisAge(record.analyzed_at, nowMs),
+  }));
+}

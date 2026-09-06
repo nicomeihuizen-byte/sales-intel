@@ -6,7 +6,7 @@ import {
   MAX_PROSPECTS,
 } from "@/lib/companies";
 import { listDealsForUser } from "@/lib/deals";
-import { listDealInsights } from "@/lib/insights";
+import { listDealInsightViews } from "@/lib/insights";
 import AppNav from "@/components/AppNav";
 import CompanyList from "@/components/CompanyList";
 import NewCompanyForm from "@/components/NewCompanyForm";
@@ -39,7 +39,7 @@ export default async function CompaniesPage() {
     listCompaniesForUser(supabase),
     listCompanyIndex(supabase),
     listDealsForUser(supabase),
-    listDealInsights(supabase),
+    listDealInsightViews(supabase),
   ]);
 
   const prospects = companies.filter((company) => company.prospect_since);

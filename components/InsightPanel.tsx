@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   DealInsight,
   DealLossReview,
@@ -14,7 +14,37 @@ import type {
 interface InsightPanelProps {
   dealId: string;
   dealStatus: DealStatus;
+  /**
+   * The last momentum read stored for this deal, already dated on the
+   * server. Shown straight away so an open deal is never a blank panel
+   * with a button on it, and null for a deal nobody has analysed or one
+   * that is closed (the insight route drops the row on won and lost).
+   */
+  storedInsight?: {
+    momentum: DealMomentum;
+    reasoning: string;
+    age: string;
+  } | null;
+  /**
+   * Run the analysis on mount, without being asked.
+   *
+   * Decided on the server: true only when AUTO_ANALYSIS is on, the deal is
+   * open, and its stored reading is older than its newest note. A browser
+   * cannot set this by itself, which matters because each run costs a
+   * model call.
+   */
+  autoRun?: boolean;
 }
+
+/**
+ * Set when an automatic run fails, and never cleared.
+ *
+ * Module scope, so it survives navigating between deals. A deal whose
+ * analysis fails stays stale, so without this every visit to it would buy
+ * another failure. The button still works: this only stops the unattended
+ * path from retrying on its own.
+ */
+let autoRunFailedThisPageLoad = false;
 
 // Badge colours, one token per meaning. Each of the three result types
 // keeps its own distinct hue family so a glance at the badge alone tells
@@ -50,8 +80,7 @@ const LOSS_REVIEW_LABEL: Record<LossReviewVerdict, string> = {
 const WIN_REVIEW_STYLES: Record<WinPattern, string> = {
   fast_and_clean: "bg-plum/10 text-plum border-plum/30",
   steady_and_thorough: "bg-iris/10 text-iris border-iris/30",
-  recovered_momentum:
-    "bg-magenta/10 text-magenta border-magenta/30",
+  recovered_momentum: "bg-magenta/10 text-magenta border-magenta/30",
 };
 
 const WIN_REVIEW_LABEL: Record<WinPattern, string> = {
@@ -126,13 +155,7 @@ function isAnalyzeResponse(value: unknown): value is AnalyzeResponse {
  * list-disc to match the terminal theme, with `list-none` so the browser
  * doesn't render a second marker beside it.
  */
-function ActionList({
-  heading,
-  items,
-}: {
-  heading: string;
-  items: string[];
-}) {
+function ActionList({ heading, items }: { heading: string; items: string[] }) {
   return (
     <div className="mt-4">
       <h3 className="font-mono text-xs uppercase tracking-wide text-muted">
@@ -202,10 +225,13 @@ function parseAnalyzeResult(body: AnalyzeResponse): AnalyzeResult | null {
 export default function InsightPanel({
   dealId,
   dealStatus,
+  storedInsight = null,
+  autoRun = false,
 }: InsightPanelProps) {
   const [result, setResult] = useState<AnalyzeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const hasAutoRun = useRef(false);
 
   async function handleAnalyze() {
     setIsLoading(true);
@@ -240,7 +266,31 @@ export default function InsightPanel({
     }
   }
 
+  // The unattended run. Fires once per mount, after paint, and only for
+  // the case the server said needs it. handleAnalyze is the same path the
+  // button uses, so there is one way this panel ever calls the API.
+  useEffect(() => {
+    if (!autoRun || hasAutoRun.current || autoRunFailedThisPageLoad) {
+      return;
+    }
+
+    hasAutoRun.current = true;
+
+    void handleAnalyze().catch(() => {
+      autoRunFailedThisPageLoad = true;
+    });
+    // handleAnalyze is redeclared every render and only reads dealId, which
+    // cannot change without this component remounting on a new route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun]);
+
   const config = PANEL_CONFIG[dealStatus];
+
+  // The stored reading stands in until a fresh one arrives. Only when
+  // there is no live result: a run that has just finished is newer than
+  // anything in the table, and showing both would be two verdicts on one
+  // screen with nothing saying which is current.
+  const showStored = !result && !isLoading && storedInsight !== null;
 
   return (
     <div className="mt-6 rounded border border-line bg-background/40 p-4">
@@ -260,6 +310,25 @@ export default function InsightPanel({
         <p role="alert" className="mt-3 text-sm text-danger">
           {error}
         </p>
+      )}
+
+      {showStored && storedInsight && (
+        <div className="mt-3">
+          <span
+            className={`inline-block rounded border px-2 py-0.5 text-xs font-medium uppercase ${MOMENTUM_STYLES[storedInsight.momentum]}`}
+          >
+            {MOMENTUM_LABEL[storedInsight.momentum]}
+          </span>
+          <span className="ml-2 font-mono text-xs text-dim">
+            {storedInsight.age}
+          </span>
+          <p className="mt-2 text-sm text-foreground">
+            {storedInsight.reasoning}
+          </p>
+          {/* No next steps here, and that is not an oversight: only the
+              momentum and the reasoning are stored. The steps come back
+              with a fresh run, which is what the button is now for. */}
+        </div>
       )}
 
       {result?.mode === "momentum" && (

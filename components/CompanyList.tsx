@@ -15,7 +15,8 @@ import {
 } from "@/lib/dealDisplay";
 import type { CompanyIndexEntry, CompanyWithCounts } from "@/lib/companies";
 import type { DealWithCompany } from "@/lib/deals";
-import type { DealInsightRecord, DealStatus } from "@/lib/types";
+import type { DealInsightView } from "@/lib/dealDisplay";
+import type { DealStatus } from "@/lib/types";
 
 /**
  * The book, in two panes: every company on the left, the selected
@@ -119,12 +120,14 @@ export default function CompanyList({
   /** Every deal the user has, grouped into the right pane on selection. */
   deals: DealWithCompany[];
   /**
-   * The stored momentum read per deal, from the last time each one was
-   * analysed. Not every deal has one: a deal nobody has pressed Analyze on
-   * is absent from this list, and the pane says so rather than inventing a
-   * neutral reading for it.
+   * The stored momentum read per deal, dated on the server so this client
+   * component never builds a "6 days ago" of its own. See DealInsightView.
+   *
+   * Only open deals appear here. The insight route drops the stored row
+   * when a deal is marked won or lost, so a closed deal has nothing by
+   * construction, and this pane must not report that as "never analysed".
    */
-  insights: DealInsightRecord[];
+  insights: DealInsightView[];
   /** Every company, for the group tree and the "part of" picker. */
   index: CompanyIndexEntry[];
   slotsFull: boolean;
@@ -143,7 +146,7 @@ export default function CompanyList({
   const openValues = useMemo(() => openValueByCompany(deals), [deals]);
 
   const insightByDeal = useMemo(
-    () => new Map(insights.map((insight) => [insight.deal_id, insight])),
+    () => new Map(insights.map((insight) => [insight.dealId, insight])),
     [insights],
   );
 
@@ -374,7 +377,15 @@ export default function CompanyList({
 
                     <ul className="divide-y divide-line">
                       {group.map((deal) => {
-                        const insight = insightByDeal.get(deal.id);
+                        // Gated on status, not just on presence. A lost
+                        // deal that was analysed with the loss review gets
+                        // no stored row, and telling him it was "not
+                        // analysed yet" when he had just analysed it is
+                        // the app contradicting what he watched happen.
+                        const insight =
+                          deal.status === "open"
+                            ? insightByDeal.get(deal.id)
+                            : undefined;
 
                         return (
                           <li key={deal.id}>
@@ -404,18 +415,25 @@ export default function CompanyList({
                                   alternative was leaving the space blank,
                                   which reads as "nothing to report" when
                                   the truth is "nobody has looked". */}
-                              {insight ? (
+                              {insight && (
                                 <>
-                                  <span
-                                    className={`mt-1 block font-mono text-xs uppercase ${MOMENTUM_STYLE[insight.momentum]}`}
-                                  >
-                                    {MOMENTUM_LABEL[insight.momentum]}
+                                  <span className="mt-1 block font-mono text-xs">
+                                    <span
+                                      className={`uppercase ${MOMENTUM_STYLE[insight.momentum]}`}
+                                    >
+                                      {MOMENTUM_LABEL[insight.momentum]}
+                                    </span>
+                                    <span className="text-dim">
+                                      {" "}
+                                      · {insight.age}
+                                    </span>
                                   </span>
                                   <span className="mt-1 line-clamp-5 block text-xs leading-relaxed text-muted">
                                     {insight.reasoning}
                                   </span>
                                 </>
-                              ) : (
+                              )}
+                              {!insight && deal.status === "open" && (
                                 <span className="mt-1 block font-mono text-xs text-dim">
                                   not analysed yet
                                 </span>
