@@ -80,8 +80,28 @@ export async function listDealInsights(
 export async function listDealInsightViews(
   supabase: SupabaseClient,
 ): Promise<DealInsightView[]> {
+  const { views } = await loadDealInsights(supabase);
+  return views;
+}
+
+/**
+ * The stored insights in both shapes, from one query and one clock read.
+ *
+ * The desk needs both and they are not interchangeable. `computePipelineMetrics`
+ * works on the raw rows, because the health meter dates the oldest analysis
+ * from `analyzed_at`. The panes need the view, because a client component
+ * must be handed "6 days ago" already turned into words.
+ *
+ * Returning both from one call is what stops the page issuing the same
+ * query twice, which is exactly the round trip the metrics docstring was
+ * written to remove.
+ */
+export async function loadDealInsights(supabase: SupabaseClient): Promise<{
+  records: DealInsightRecord[];
+  views: DealInsightView[];
+}> {
   const records = await listDealInsights(supabase);
-  return toInsightViews(records, Date.now());
+  return { records, views: toInsightViews(records, Date.now()) };
 }
 
 /**

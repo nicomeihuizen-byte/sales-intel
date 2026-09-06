@@ -26,8 +26,6 @@ const MOMENTUM_SCORE: Record<DealMomentum, number> = {
   at_risk: 15,
 };
 
-const MILLISECONDS_PER_MONTH = 1000 * 60 * 60 * 24 * (365.25 / 12);
-
 /**
  * Averages the stored momentum reads across the open deals that have one.
  *
@@ -42,7 +40,9 @@ function scoreFromInsights(
   insights: DealInsightRecord[],
 ): { score: number | null; analyzed: number; oldestAnalysisAt: string | null } {
   const openDealIds = new Set(openDeals.map((deal) => deal.id));
-  const relevant = insights.filter((insight) => openDealIds.has(insight.deal_id));
+  const relevant = insights.filter((insight) =>
+    openDealIds.has(insight.deal_id),
+  );
 
   if (relevant.length === 0) {
     return { score: null, analyzed: 0, oldestAnalysisAt: null };
@@ -74,40 +74,37 @@ function sumValues(deals: Deal[]): number {
 }
 
 /**
- * Mean months from a deal being created to being marked won.
+ * The share of closed deals that were won.
  *
- * Only deals with both dates count. Every deal won before `closed_at`
- * existed has a null there and is skipped rather than estimated, which is
- * why the panel reports how many deals the average is built on: an
- * average of one is a number, not a trend, and saying so is the difference
- * between a metric and a decoration.
+ * This replaced an average time from open to won, and the reason is worth
+ * keeping. That metric needed both a `created_at` and a `closed_at` on the
+ * same won deal, so it read "not enough data" on any pipeline where nothing
+ * had yet been closed inside this app, which is every new account and was
+ * still true of his own after a week. A panel tile that says nothing for
+ * the first month is a tile nobody looks at afterwards.
  *
- * A negative interval (a closed_at edited to before the deal existed) is
- * dropped rather than clamped, since it means the data is wrong and
- * averaging in a zero would hide that.
+ * Won over won-plus-lost, so open deals do not drag it down: a deal still
+ * in play has not been lost, and counting it as one would make a healthy
+ * pipeline look like a bad quarter.
+ *
+ * Null when nothing has closed at all. That is a different statement from
+ * 0%, which means deals closed and none of them were won, and the panel
+ * says so in different words.
  */
-function averageMonthsToWin(deals: Deal[]): {
-  average: number | null;
-  counted: number;
+function winRateFromDeals(deals: Deal[]): {
+  rate: number | null;
+  won: number;
+  lost: number;
 } {
-  const intervals = deals
-    .filter((deal) => deal.status === "won" && deal.closed_at)
-    .map(
-      (deal) =>
-        (new Date(deal.closed_at as string).getTime() -
-          new Date(deal.created_at).getTime()) /
-        MILLISECONDS_PER_MONTH,
-    )
-    .filter((months) => Number.isFinite(months) && months >= 0);
+  const won = deals.filter((deal) => deal.status === "won").length;
+  const lost = deals.filter((deal) => deal.status === "lost").length;
+  const closed = won + lost;
 
-  if (intervals.length === 0) {
-    return { average: null, counted: 0 };
+  if (closed === 0) {
+    return { rate: null, won, lost };
   }
 
-  const mean =
-    intervals.reduce((sum, months) => sum + months, 0) / intervals.length;
-
-  return { average: Math.round(mean * 10) / 10, counted: intervals.length };
+  return { rate: Math.round((won / closed) * 100), won, lost };
 }
 
 /**
@@ -143,7 +140,7 @@ export async function computePipelineMetrics(
     openDeals,
     insights,
   );
-  const { average, counted } = averageMonthsToWin(deals);
+  const { rate, lost } = winRateFromDeals(deals);
 
   return {
     healthScore: score,
@@ -152,8 +149,8 @@ export async function computePipelineMetrics(
     openValueEur: sumValues(openDeals),
     wonDeals: wonDeals.length,
     wonValueEur: sumValues(wonDeals),
-    averageMonthsToWin: average,
-    wonDealsWithDates: counted,
+    winRate: rate,
+    lostDeals: lost,
     oldestAnalysisAt,
   };
 }

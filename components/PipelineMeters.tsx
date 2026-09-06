@@ -1,10 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import {
-  refreshPipelineAction,
-  type RefreshState,
-} from "@/app/actions";
+import { refreshPipelineAction, type RefreshState } from "@/app/actions";
 import { formatEuro } from "@/lib/metrics";
 import type { PipelineMetrics } from "@/lib/types";
 
@@ -217,17 +214,25 @@ export default function PipelineMeters({
         </div>
 
         <div className="lg:pl-6">
+          {/* Was an average time from open to won. That needed both dates
+              on a won deal, so it read "not enough data" until something
+              had been closed inside this app, which is every new account
+              and was still true here after a week. A tile that says
+              nothing for a month is one nobody reads afterwards.
+
+              Won over won-plus-lost, so open deals do not drag it down: a
+              deal still in play has not been lost. */}
           <StatTile
-            label="Open to won"
+            label="Win rate"
             value={
-              metrics.averageMonthsToWin === null
-                ? "not enough data"
-                : `${metrics.averageMonthsToWin} months`
+              metrics.winRate === null
+                ? "nothing closed"
+                : `${metrics.winRate}%`
             }
             footnote={
-              metrics.wonDealsWithDates > 0
-                ? `average of ${metrics.wonDealsWithDates} deal${metrics.wonDealsWithDates === 1 ? "" : "s"}`
-                : "counts deals closed in this app"
+              metrics.winRate === null
+                ? "won and lost deals only"
+                : `${metrics.wonDeals} won · ${metrics.lostDeals} lost`
             }
           />
         </div>

@@ -239,8 +239,11 @@ export interface PipelineMetrics {
   wonValueEur: number;
   // Average months from a deal being created to being marked won. Null
   // until at least one deal has both dates.
-  averageMonthsToWin: number | null;
-  wonDealsWithDates: number;
+  // How many closed deals were won, as a percentage, or null when nothing
+  // has closed yet. Null and zero are different answers here: nothing
+  // decided reads as "no closed deals yet", a genuine 0% reads as 0%.
+  winRate: number | null;
+  lostDeals: number;
   // The oldest analysis feeding healthScore, so the panel can say how
   // stale the number is instead of implying it is live.
   oldestAnalysisAt: string | null;

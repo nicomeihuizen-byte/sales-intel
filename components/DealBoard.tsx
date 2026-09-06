@@ -6,16 +6,11 @@ import DealValueField from "@/components/DealValueField";
 import NoteList from "@/components/NoteList";
 import NoteForm from "@/components/NoteForm";
 import InsightPanel from "@/components/InsightPanel";
+import type { DealInsightView } from "@/lib/dealDisplay";
 import ConfirmDeleteButton from "@/components/ConfirmDeleteButton";
 import Overlay from "@/components/Overlay";
 import { deleteDealAction } from "@/app/actions";
-import type {
-  Deal,
-  DealInsightRecord,
-  DealMomentum,
-  DealStatus,
-  Note,
-} from "@/lib/types";
+import type { Deal, DealMomentum, DealStatus, Note } from "@/lib/types";
 
 // The stored momentum verdicts, in the same colour families the analysis
 // panel uses, so a summary in this pane and the badge inside the overlay
@@ -75,11 +70,25 @@ const UNANALYSED_HINT: Record<DealStatus, string> = {
 function DealOverlay({
   deal,
   notes,
+  insight,
+  autoRun,
   canDelete,
   onClose,
 }: {
   deal: Deal & { company_name?: string };
   notes: Note[];
+  /**
+   * The stored reading for this deal, or null when there is none.
+   *
+   * It was not passed at all until now, which is the bug: the card behind
+   * this overlay showed "stalling" and three lines of reasoning, and
+   * opening it showed an empty panel asking you to press Analyze on a
+   * deal that had already been analysed. Two verdicts on one deal, one of
+   * them blank.
+   */
+  insight: DealInsightView | null;
+  /** Re-read this deal on open, when the flag is on and it is stale. */
+  autoRun: boolean;
   canDelete: boolean;
   onClose: () => void;
 }) {
@@ -112,7 +121,20 @@ function DealOverlay({
           </button>
         </div>
 
-        <InsightPanel dealId={deal.id} dealStatus={deal.status} />
+        <InsightPanel
+          dealId={deal.id}
+          dealStatus={deal.status}
+          storedInsight={
+            insight
+              ? {
+                  momentum: insight.momentum,
+                  reasoning: insight.reasoning,
+                  age: insight.age,
+                }
+              : null
+          }
+          autoRun={autoRun}
+        />
 
         <NoteForm dealId={deal.id} />
 
@@ -134,11 +156,19 @@ function DealOverlay({
 export default function DealBoard({
   deals,
   insightsByDeal,
+  staleDealIds,
   notesByDeal,
   canDelete,
 }: {
   deals: Deal[];
-  insightsByDeal: Record<string, DealInsightRecord>;
+  /**
+   * The stored reading per deal, dated on the server. Keyed by deal id and
+   * handed to the overlay as well as the card: the card showing a verdict
+   * that the overlay behind it does not was the bug this replaced.
+   */
+  insightsByDeal: Record<string, DealInsightView>;
+  /** Open deals whose stored reading is older than their newest note. */
+  staleDealIds: string[];
   notesByDeal: Record<string, Note[]>;
   canDelete: boolean;
 }) {
@@ -177,6 +207,11 @@ export default function DealBoard({
                         <span className={MOMENTUM_STYLE[insight.momentum]}>
                           {MOMENTUM_LABEL[insight.momentum]}
                         </span>
+                        {/* The age, here too. A verdict with no date on it
+                            is the thing that goes quietly stale. */}
+                        <span className="normal-case text-dim">
+                          {insight.age}
+                        </span>
                       </>
                     )}
                   </span>
@@ -198,6 +233,8 @@ export default function DealBoard({
         <DealOverlay
           deal={openDeal}
           notes={notesByDeal[openDeal.id] ?? []}
+          insight={insightsByDeal[openDeal.id] ?? null}
+          autoRun={staleDealIds.includes(openDeal.id)}
           canDelete={canDelete}
           onClose={() => setOpenDealId(null)}
         />

@@ -17,9 +17,12 @@ import {
   listNotesForDeal,
 } from "@/lib/notes";
 import { computePipelineMetrics } from "@/lib/metrics";
-import { listDealInsights } from "@/lib/insights";
+import { loadDealInsights, listStaleOpenDealIds } from "@/lib/insights";
 import { deleteCompanyAction } from "@/app/actions";
-import { destructiveActionsEnabled } from "@/lib/featureFlags";
+import {
+  autoAnalysisEnabled,
+  destructiveActionsEnabled,
+} from "@/lib/featureFlags";
 import AppNav from "@/components/AppNav";
 import CompanyDetailsButton from "@/components/CompanyDetailsButton";
 import ContactList from "@/components/ContactList";
@@ -143,10 +146,10 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
   // which RLS makes indistinguishable) falls back to showing nothing
   // selected rather than a not-found page. A stale bookmark should land
   // you in the app, not on an error.
-  const [prospects, insights, requestedCompany, companyIndex] =
+  const [prospects, storedInsights, requestedCompany, companyIndex] =
     await Promise.all([
       listProspects(supabase),
-      listDealInsights(supabase),
+      loadDealInsights(supabase),
       companyId ? getCompanyById(supabase, companyId) : Promise.resolve(null),
       // Four columns for every company, so the details panel can draw the
       // group a prospect sits in. The desk itself only ever shows the five,
@@ -172,7 +175,7 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
   // Wave two: needs the selected company, and hands the metrics panel the
   // insights we already have so it does not fetch them a second time.
   const [metrics, contacts, deals] = await Promise.all([
-    computePipelineMetrics(supabase, insights),
+    computePipelineMetrics(supabase, storedInsights.records),
     selectedCompany
       ? listContactsForCompany(supabase, selectedCompany.id)
       : Promise.resolve([]),
@@ -225,10 +228,21 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
   // The stored verdicts, so each deal row can show the last thing the
   // analysis said without this page making a single model call.
   const insightsByDeal = Object.fromEntries(
-    insights
-      .filter((insight) => insight.deal_id in notesByDeal)
-      .map((insight) => [insight.deal_id, insight]),
+    storedInsights.views
+      .filter((insight) => insight.dealId in notesByDeal)
+      .map((insight) => [insight.dealId, insight]),
   );
+
+  // Which of this company's open deals should re-read themselves when you
+  // open one. Computed only when the flag is on, so a deployment without
+  // automatic analysis pays nothing for the question, and decided here
+  // rather than in the browser because each run is a paid model call.
+  const staleDealIds = autoAnalysisEnabled()
+    ? await listStaleOpenDealIds(
+        supabase,
+        openDeals.map((deal) => deal.id),
+      )
+    : [];
 
   return (
     <TerminalShell label="~/desk" maxWidthClassName="max-w-[1800px]">
@@ -465,6 +479,7 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                 <DealBoard
                   deals={deals}
                   insightsByDeal={insightsByDeal}
+                  staleDealIds={staleDealIds}
                   notesByDeal={notesByDeal}
                   canDelete={canDelete}
                 />

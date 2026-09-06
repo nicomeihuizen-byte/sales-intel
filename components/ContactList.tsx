@@ -12,6 +12,7 @@ import {
 import ConfidentialToggle from "@/components/ConfidentialToggle";
 import EmailPanel from "@/components/EmailPanel";
 import MultiField from "@/components/MultiField";
+import Overlay from "@/components/Overlay";
 import NoteBody, { noteLabel } from "@/components/NoteBody";
 import { mailtoHref, profileHref, socialLabel, telHref } from "@/lib/links";
 import { useActionSuccess } from "@/lib/useActionSuccess";
@@ -507,75 +508,102 @@ function ContactRow({
 
   return (
     <li className="rounded border border-line px-3 py-2.5">
-      {isEditing ? (
-        <ContactFields
-          formAction={formAction}
-          state={state}
-          isPending={isPending}
-          contact={contact}
-          submitLabel="Save"
-          onCancel={() => setIsEditing(false)}
-        />
-      ) : (
-        <>
-          <ContactDetails contact={contact} />
-          {deleteState.error && (
-            <p role="alert" className="mt-1 text-xs text-danger">
-              {deleteState.error}
-            </p>
-          )}
-          <div className="mt-2 flex items-center gap-3">
-            {/* "email", not "draft email". The panel behind it does one
+      {/* Editing pops out as well, and it has to: it is the same form as
+          the add pane, so leaving it inline would swap one card in a
+          scrolling column for something taller than the column, and take
+          every row below it out of view while you typed.
+
+          The card underneath keeps rendering, so the pane does not jump
+          when the overlay closes. */}
+      {isEditing && (
+        <Overlay
+          label={`Edit ${contact.name}`}
+          onClose={() => setIsEditing(false)}
+          widthClassName="max-w-xl"
+          dismissible={false}
+        >
+          <h3 className="font-display text-lg font-semibold text-foreground">
+            {contact.name}
+          </h3>
+
+          <div className="mt-4">
+            <ContactFields
+              formAction={formAction}
+              state={state}
+              isPending={isPending}
+              contact={contact}
+              submitLabel="Save"
+              onCancel={() => setIsEditing(false)}
+            />
+          </div>
+        </Overlay>
+      )}
+
+      <>
+        <ContactDetails contact={contact} />
+        {deleteState.error && (
+          <p role="alert" className="mt-1 text-xs text-danger">
+            {deleteState.error}
+          </p>
+        )}
+        <div className="mt-2 flex items-center gap-3">
+          {/* "email", not "draft email". The panel behind it does one
                 thing, put an email on the record, and drafting is only one
                 of the two ways in - the label used to name the way in that
                 happens to involve the model, which is how logging what you
                 actually sent ended up hidden inside it. */}
+          <button
+            type="button"
+            onClick={() => setIsEmailOpen((open) => !open)}
+            className="font-mono text-xs text-accent2 transition-colors hover:text-accent"
+          >
+            {isEmailOpen ? "hide email" : "email"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="font-mono text-xs text-dim transition-colors hover:text-accent"
+          >
+            edit
+          </button>
+          <MoveContact contact={contact} companyIndex={companyIndex} />
+          <form action={deleteAction}>
+            <input type="hidden" name="contactId" value={contact.id} />
             <button
-              type="button"
-              onClick={() => setIsEmailOpen((open) => !open)}
-              className="font-mono text-xs text-accent2 transition-colors hover:text-accent"
+              type="submit"
+              disabled={isDeleting}
+              className="font-mono text-xs text-dim transition-colors hover:text-danger disabled:opacity-50"
             >
-              {isEmailOpen ? "hide email" : "email"}
+              {isDeleting ? "removing..." : "remove"}
             </button>
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              className="font-mono text-xs text-dim transition-colors hover:text-accent"
-            >
-              edit
-            </button>
-            <MoveContact contact={contact} companyIndex={companyIndex} />
-            <form action={deleteAction}>
-              <input type="hidden" name="contactId" value={contact.id} />
-              <button
-                type="submit"
-                disabled={isDeleting}
-                className="font-mono text-xs text-dim transition-colors hover:text-danger disabled:opacity-50"
-              >
-                {isDeleting ? "removing..." : "remove"}
-              </button>
-            </form>
-          </div>
+          </form>
+        </div>
 
-          <ContactNotes contact={contact} notes={notes} noteCount={noteCount} />
+        <ContactNotes contact={contact} notes={notes} noteCount={noteCount} />
 
-          {isEmailOpen && (
-            <EmailPanel
-              contact={contact}
-              deals={deals}
-              defaultDealId={defaultDealId}
-              onClose={() => setIsEmailOpen(false)}
-            />
-          )}
-        </>
-      )}
+        {isEmailOpen && (
+          <EmailPanel
+            contact={contact}
+            deals={deals}
+            defaultDealId={defaultDealId}
+            onClose={() => setIsEmailOpen(false)}
+          />
+        )}
+      </>
     </li>
   );
 }
 
 /**
- * The people at one company: a scrolling list, an inline editor per person,
- * and an add form that stays collapsed until you want it.
+ * The people at one company: a scrolling list, with the add form and the
+ * per-person editor both popping out over it.
+ *
+ * They pop out because the form outgrew the pane. Contacts get a column on
+ * the desk, not a page, and once a contact carried a location, an address
+ * and three repeating lists, an inline form was taller than the space it
+ * had: the Save button sat below the fold with no scrollbar of its own, so
+ * the form could be filled in and not saved. An overlay has the whole
+ * viewport and the pane behind it never moves.
  *
  * The list is the pane's scroll region rather than something that grows to
  * fit. A company with one contact and a company with six used to make the
@@ -674,16 +702,44 @@ export default function ContactList({
         </div>
       </div>
 
+      {/* A pop-out, not a block above the list.
+
+          It was a block until the form grew past what this pane can hold.
+          The desk gives contacts a column, not a page, and eight fields
+          plus three repeating lists is taller than that column: the Save
+          button ended up below the fold with no scrollbar of its own, so
+          you could type into the form and then not reach the button that
+          saves it.
+
+          Locked shut, same as the add-company form, and for the same
+          reason: this gets filled in with a registry page open in another
+          window, and a click on the backdrop used to take the lot. Cancel
+          is the way out. */}
       {isAdding && (
-        <div className="mt-3 shrink-0 rounded border border-accent-dim px-3 py-3">
-          <ContactFields
-            formAction={formAction}
-            state={state}
-            isPending={isPending}
-            submitLabel="Add contact"
-            onCancel={() => setIsAdding(false)}
-          />
-        </div>
+        <Overlay
+          label="Add a contact"
+          onClose={() => setIsAdding(false)}
+          widthClassName="max-w-xl"
+          dismissible={false}
+        >
+          <h3 className="font-display text-lg font-semibold text-foreground">
+            Add a contact
+          </h3>
+          <p className="mt-1 text-sm text-muted">
+            The name is all that is required. The rest can wait until you have
+            it.
+          </p>
+
+          <div className="mt-4">
+            <ContactFields
+              formAction={formAction}
+              state={state}
+              isPending={isPending}
+              submitLabel="Add contact"
+              onCancel={() => setIsAdding(false)}
+            />
+          </div>
+        </Overlay>
       )}
 
       {contacts.length === 0 && !isAdding && (
