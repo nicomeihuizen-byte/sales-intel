@@ -6,6 +6,7 @@ import {
   MAX_PROSPECTS,
 } from "@/lib/companies";
 import { listDealsForUser } from "@/lib/deals";
+import { listDealInsights } from "@/lib/insights";
 import AppNav from "@/components/AppNav";
 import CompanyList from "@/components/CompanyList";
 import NewCompanyForm from "@/components/NewCompanyForm";
@@ -30,10 +31,15 @@ export default async function CompaniesPage() {
   // waterfall this app already paid for once on the desk, and the whole
   // book is a few hundred rows: the network is the expensive part here,
   // not the filter.
-  const [companies, index, deals] = await Promise.all([
+  // The insights are the stored momentum reads, one row per deal, written
+  // whenever a deal is analysed. Read here rather than generated: this page
+  // must never make an AI call, and the whole point of the cache is that a
+  // list can show the model's current opinion for nothing.
+  const [companies, index, deals, insights] = await Promise.all([
     listCompaniesForUser(supabase),
     listCompanyIndex(supabase),
     listDealsForUser(supabase),
+    listDealInsights(supabase),
   ]);
 
   const prospects = companies.filter((company) => company.prospect_since);
@@ -108,6 +114,7 @@ export default async function CompaniesPage() {
         <CompanyList
           companies={companies}
           deals={deals}
+          insights={insights}
           index={index}
           slotsFull={slotsFull}
         />

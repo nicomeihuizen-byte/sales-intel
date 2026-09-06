@@ -7,11 +7,15 @@ import ProspectToggle from "@/components/ProspectToggle";
 import {
   STATUS_LABEL,
   STATUS_STYLE,
+  MOMENTUM_EDGE,
+  MOMENTUM_LABEL,
+  MOMENTUM_STYLE,
   EURO,
   formatDealValue,
 } from "@/lib/dealDisplay";
 import type { CompanyIndexEntry, CompanyWithCounts } from "@/lib/companies";
 import type { DealWithCompany } from "@/lib/deals";
+import type { DealInsightRecord, DealStatus } from "@/lib/types";
 
 /**
  * The book, in two panes: every company on the left, the selected
@@ -42,8 +46,15 @@ import type { DealWithCompany } from "@/lib/deals";
 /** How the left pane is ordered. */
 type CompanySort = "name" | "empty" | "deals" | "value";
 
-/** How the right pane is ordered. */
-type DealSort = "value" | "unpriced" | "newest" | "status";
+/**
+ * How the right pane is ordered *within* a status group.
+ *
+ * "open first" used to be one of these. It went when the pane started
+ * drawing open, won and lost as three sections: a sort that reorders rows
+ * inside a group by the thing the group is already defined by does
+ * nothing, and a control that does nothing is worse than no control.
+ */
+type DealSort = "value" | "unpriced" | "newest";
 
 const COMPANY_SORTS: { value: CompanySort; label: string }[] = [
   { value: "name", label: "A-Z" },
@@ -56,11 +67,19 @@ const DEAL_SORTS: { value: DealSort; label: string }[] = [
   { value: "value", label: "biggest first" },
   { value: "unpriced", label: "unpriced first" },
   { value: "newest", label: "newest" },
-  { value: "status", label: "open first" },
 ];
 
-/** Where a status sits when sorting by it: what is still live, first. */
-const STATUS_ORDER = { open: 0, won: 1, lost: 2 } as const;
+/**
+ * The order the three groups are drawn in, and the only place that order
+ * is written down.
+ *
+ * Every status gets a section, always, even an empty one is skipped rather
+ * than hidden behind a filter. "Full view" means you can see that a company
+ * has one open deal and three lost ones without changing anything, because
+ * three lost deals is itself the answer to whether to spend another evening
+ * on them.
+ */
+const STATUS_GROUPS: DealStatus[] = ["open", "won", "lost"];
 
 const selectClass =
   "rounded border border-line bg-background px-1.5 py-0.5 font-mono text-xs text-muted outline-none focus:border-accent";
@@ -92,12 +111,20 @@ function openValueByCompany(deals: DealWithCompany[]): Map<string, number> {
 export default function CompanyList({
   companies,
   deals,
+  insights,
   index,
   slotsFull,
 }: {
   companies: CompanyWithCounts[];
   /** Every deal the user has, grouped into the right pane on selection. */
   deals: DealWithCompany[];
+  /**
+   * The stored momentum read per deal, from the last time each one was
+   * analysed. Not every deal has one: a deal nobody has pressed Analyze on
+   * is absent from this list, and the pane says so rather than inventing a
+   * neutral reading for it.
+   */
+  insights: DealInsightRecord[];
   /** Every company, for the group tree and the "part of" picker. */
   index: CompanyIndexEntry[];
   slotsFull: boolean;
@@ -114,6 +141,11 @@ export default function CompanyList({
     companies.find((company) => company.id === selectedId) ?? null;
 
   const openValues = useMemo(() => openValueByCompany(deals), [deals]);
+
+  const insightByDeal = useMemo(
+    () => new Map(insights.map((insight) => [insight.deal_id, insight])),
+    [insights],
+  );
 
   // Every ordering falls back to the name, so two companies with the same
   // deal count do not swap places between renders. localeCompare and not
@@ -167,10 +199,6 @@ export default function CompanyList({
 
       if (dealSort === "newest") {
         return b.created_at.localeCompare(a.created_at) || byTitle(a, b);
-      }
-
-      if (dealSort === "status") {
-        return STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || byTitle(a, b);
       }
 
       // Biggest first, and an unpriced deal sorts last rather than as zero:
@@ -313,30 +341,93 @@ export default function CompanyList({
                   : "Pick a company on the left."}
               </p>
             ) : (
-              <ul className="divide-y divide-line">
-                {selectedDeals.map((deal) => (
-                  <li key={deal.id}>
-                    <Link
-                      href={`/deals/${deal.id}`}
-                      className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-background/40"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                        {deal.title}
-                      </span>
-                      <span className="shrink-0 text-right">
-                        <span className="block font-mono text-sm text-muted">
-                          {formatDealValue(deal.value_eur)}
-                        </span>
-                        <span
-                          className={`mt-0.5 block font-mono text-xs uppercase ${STATUS_STYLE[deal.status]}`}
-                        >
-                          {STATUS_LABEL[deal.status]}
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              STATUS_GROUPS.map((status) => {
+                const group = selectedDeals.filter(
+                  (deal) => deal.status === status,
+                );
+
+                if (group.length === 0) {
+                  return null;
+                }
+
+                // Only what is still live is totalled. A "won 3 · € 91.000"
+                // heading reads as pipeline at a glance, and it is not.
+                const groupValue =
+                  status === "open"
+                    ? group.reduce(
+                        (total, deal) => total + (deal.value_eur ?? 0),
+                        0,
+                      )
+                    : null;
+
+                return (
+                  <section key={status}>
+                    <h3 className="sticky top-0 z-10 border-b border-line bg-raised px-4 py-1.5 font-mono text-xs uppercase text-dim">
+                      <span className={STATUS_STYLE[status]}>
+                        {STATUS_LABEL[status]}
+                      </span>{" "}
+                      {group.length}
+                      {groupValue !== null &&
+                        groupValue > 0 &&
+                        ` · ${EURO.format(groupValue)}`}
+                    </h3>
+
+                    <ul className="divide-y divide-line">
+                      {group.map((deal) => {
+                        const insight = insightByDeal.get(deal.id);
+
+                        return (
+                          <li key={deal.id}>
+                            <Link
+                              href={`/deals/${deal.id}`}
+                              className={`block px-4 py-3 transition-colors hover:bg-background/40 ${
+                                insight ? MOMENTUM_EDGE[insight.momentum] : ""
+                              }`}
+                            >
+                              <span className="flex items-baseline justify-between gap-4">
+                                <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                                  {deal.title}
+                                </span>
+                                <span className="shrink-0 font-mono text-sm text-muted">
+                                  {formatDealValue(deal.value_eur)}
+                                </span>
+                              </span>
+
+                              {/* The stored reasoning, clamped to five
+                                  lines. Clamped and not truncated at a
+                                  character count: five lines is what fits
+                                  beside a company list without the pane
+                                  turning into an essay, and the deal page
+                                  is one click away for the rest.
+
+                                  A deal nobody has analysed says so. The
+                                  alternative was leaving the space blank,
+                                  which reads as "nothing to report" when
+                                  the truth is "nobody has looked". */}
+                              {insight ? (
+                                <>
+                                  <span
+                                    className={`mt-1 block font-mono text-xs uppercase ${MOMENTUM_STYLE[insight.momentum]}`}
+                                  >
+                                    {MOMENTUM_LABEL[insight.momentum]}
+                                  </span>
+                                  <span className="mt-1 line-clamp-5 block text-xs leading-relaxed text-muted">
+                                    {insight.reasoning}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="mt-1 block font-mono text-xs text-dim">
+                                  not analysed yet
+                                </span>
+                              )}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                );
+              })
             )}
           </div>
         </div>

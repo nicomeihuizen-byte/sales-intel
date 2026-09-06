@@ -1,4 +1,4 @@
-import type { DealStatus } from "./types";
+import type { DealMomentum, DealStatus } from "./types";
 
 /**
  * How a deal is rendered, in one place.
@@ -42,3 +42,41 @@ export const STATUS_STYLE: Record<DealStatus, string> = {
 export function formatDealValue(valueEur: number | null): string {
   return valueEur === null ? "–" : EURO.format(valueEur);
 }
+
+/**
+ * The three momentum readings, in words and in colour.
+ *
+ * `at_risk` is stored with an underscore because it is a database value;
+ * nobody says "at underscore risk", so the label carries the space and the
+ * column keeps the identifier.
+ *
+ * The colours are the same three the pipeline meter already uses, and they
+ * are deliberately the traffic-light set: this is a judgement about where
+ * the evening should go, and it has to be readable without being read.
+ */
+export const MOMENTUM_LABEL: Record<DealMomentum, string> = {
+  healthy: "healthy",
+  stalling: "stalling",
+  at_risk: "at risk",
+};
+
+export const MOMENTUM_STYLE: Record<DealMomentum, string> = {
+  healthy: "text-ok",
+  stalling: "text-warn",
+  at_risk: "text-danger",
+};
+
+/**
+ * The left edge marking a deal's momentum in a list.
+ *
+ * A border and not a fill: a filled row competes with the status colour on
+ * the right of the same row, and three saturated backgrounds down a pane
+ * turn a list into a warning sign. An unanalysed deal gets no edge at all
+ * rather than a grey one, because "nobody has looked at this yet" is a
+ * different statement from "this is fine".
+ */
+export const MOMENTUM_EDGE: Record<DealMomentum, string> = {
+  healthy: "border-l-2 border-l-ok",
+  stalling: "border-l-2 border-l-warn",
+  at_risk: "border-l-2 border-l-danger",
+};

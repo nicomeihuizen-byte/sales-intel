@@ -43,14 +43,33 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   }
 
   return (
-    <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
-      <span className="shrink-0 font-mono text-xs text-dim sm:w-40 sm:pt-0.5">
-        {label}
-      </span>
-      <span className="min-w-0 text-sm text-foreground">{children}</span>
-    </div>
+    <>
+      <dt className="font-mono text-xs text-dim sm:pt-[0.2rem]">{label}</dt>
+      <dd className="min-w-0 text-sm leading-relaxed text-foreground">
+        {children}
+      </dd>
+    </>
   );
 }
+
+/**
+ * The column that makes the panel read as a record rather than a pile.
+ *
+ * Each row used to be its own flex line with a fixed-width label, which
+ * put the burden of the column on every label in the list and left the
+ * gutter to be re-decided each time a field was added. Declaring the two
+ * tracks once, on the list, is what a definition list is for, and it is
+ * why the values line up whatever the longest label happens to be.
+ *
+ * 8.5rem, not the 10rem the flex version used. The longest label here is
+ * "Registration", and the extra rem and a half was a lake of empty space
+ * beside "Email" and "Country" for no gain.
+ *
+ * One column below the sm breakpoint, where a 136px gutter would leave
+ * nothing worth having for the value: label above, value under it.
+ */
+const FIELD_LIST =
+  "grid gap-x-5 gap-y-2 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:gap-y-2.5";
 
 /**
  * A link when the value parses into a safe href, plain text when it does
@@ -95,23 +114,23 @@ function CompanyDetails({
 }) {
   const hasAny = Boolean(
     company.description ||
-      company.background ||
-      company.address ||
-      company.country ||
-      company.phone ||
-      company.email ||
-      company.website ||
-      company.socials.length > 0 ||
-      company.vat_number ||
-      company.registration_number,
+    company.background ||
+    company.address ||
+    company.country ||
+    company.phone ||
+    company.email ||
+    company.website ||
+    company.socials.length > 0 ||
+    company.vat_number ||
+    company.registration_number,
   );
 
   if (!hasAny) {
     return (
       <>
         <p className="text-sm text-muted">
-          Nothing filled in yet beyond the name. Press edit to add what they
-          do, the address, the numbers and how to reach them.
+          Nothing filled in yet beyond the name. Press edit to add what they do,
+          the address, the numbers and how to reach them.
         </p>
         <div className="mt-5">
           <CompanyTree
@@ -124,91 +143,95 @@ function CompanyDetails({
     );
   }
 
-  return (
-    <div className="flex flex-col gap-2.5">
-      {/* The two prose blocks sit above the field rows and are spaced away
-          from them, because they are a different kind of thing. Everything
-          below is one short value on one line; these two are paragraphs,
-          and running a wrapped paragraph straight into "Address" at the
-          same 10px gap made the description look like the first line of
-          the address. The rows keep their tight rhythm, the prose gets
-          air. */}
-      <div className="flex flex-col gap-2.5 pb-2">
-        {/* First, because it is the one line that makes the name mean
-            something again three weeks later. */}
-        <Row label="What they do">
-          {company.description && (
-            <span className="whitespace-pre-wrap">{company.description}</span>
-          )}
-        </Row>
-        <Row label="Background">
-          {company.background && (
-            <span className="whitespace-pre-wrap">{company.background}</span>
-          )}
-        </Row>
-      </div>
+  const hasProse = Boolean(company.description || company.background);
 
-      <Row label="Address">
-        {company.address && (
-          // The address was pasted in as a block, so it is printed as one.
-          <span className="whitespace-pre-wrap">{company.address}</span>
-        )}
-      </Row>
-      <Row label="Country">{company.country}</Row>
-      <Row label="Telephone">
-        <LinkOrText href={telHref(company.phone)}>{company.phone}</LinkOrText>
-      </Row>
-      <Row label="Email">
-        <LinkOrText href={mailtoHref(company.email)}>
-          {company.email}
-        </LinkOrText>
-      </Row>
-      <Row label="Website">
-        <LinkOrText href={profileHref(company.website)}>
-          {company.website}
-        </LinkOrText>
-      </Row>
-      {/* Named chips rather than one row per URL, matching the contact
+  return (
+    <div>
+      {/* The prose gets its own list, above the fields and spaced away from
+          them, because it is a different kind of thing: everything below is
+          one short value on one line, these two are paragraphs. Both lists
+          declare the same two tracks, so the labels still line up across
+          the gap between them and the panel reads as one column. */}
+      {hasProse && (
+        <dl className={`${FIELD_LIST} mb-5`}>
+          {/* First, because it is the one line that makes the name mean
+              something again three weeks later. */}
+          <Row label="What they do">
+            {company.description && (
+              <span className="whitespace-pre-wrap">{company.description}</span>
+            )}
+          </Row>
+          <Row label="Background">
+            {company.background && (
+              <span className="whitespace-pre-wrap">{company.background}</span>
+            )}
+          </Row>
+        </dl>
+      )}
+
+      <dl className={FIELD_LIST}>
+        <Row label="Address">
+          {company.address && (
+            // The address was pasted in as a block, so it is printed as one.
+            <span className="whitespace-pre-wrap">{company.address}</span>
+          )}
+        </Row>
+        <Row label="Country">{company.country}</Row>
+        <Row label="Telephone">
+          <LinkOrText href={telHref(company.phone)}>{company.phone}</LinkOrText>
+        </Row>
+        <Row label="Email">
+          <LinkOrText href={mailtoHref(company.email)}>
+            {company.email}
+          </LinkOrText>
+        </Row>
+        <Row label="Website">
+          <LinkOrText href={profileHref(company.website)}>
+            {company.website}
+          </LinkOrText>
+        </Row>
+        {/* Named chips rather than one row per URL, matching the contact
           pane. A profile URL is long and says nothing you can read at a
           glance, so the network name is the link and the URL is the title
           - four profiles on one line instead of four rows of noise. */}
-      <Row label="Socials">
-        {company.socials.length > 0 && (
-          <span className="flex flex-wrap gap-1.5">
-            {company.socials.map((social) => {
-              const href = profileHref(social);
+        <Row label="Socials">
+          {company.socials.length > 0 && (
+            <span className="flex flex-wrap gap-1.5">
+              {company.socials.map((social) => {
+                const href = profileHref(social);
 
-              return href ? (
-                <a
-                  key={social}
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  title={social}
-                  className="inline-block rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-accent2 transition-colors hover:border-accent2"
-                >
-                  {socialLabel(social)}
-                </a>
-              ) : (
-                <span
-                  key={social}
-                  title={social}
-                  className="inline-block rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted"
-                >
-                  {socialLabel(social)}
-                </span>
-              );
-            })}
-          </span>
-        )}
-      </Row>
-      <Row label="VAT number">{company.vat_number}</Row>
-      <Row label="Registration">{company.registration_number}</Row>
+                return href ? (
+                  <a
+                    key={social}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={social}
+                    className="inline-block rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-accent2 transition-colors hover:border-accent2"
+                  >
+                    {socialLabel(social)}
+                  </a>
+                ) : (
+                  <span
+                    key={social}
+                    title={social}
+                    className="inline-block rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted"
+                  >
+                    {socialLabel(social)}
+                  </span>
+                );
+              })}
+            </span>
+          )}
+        </Row>
+        <Row label="VAT number">{company.vat_number}</Row>
+        <Row label="Registration">{company.registration_number}</Row>
+      </dl>
 
       {/* The group, drawn from the parent links. Renders nothing at all
           for a company standing on its own, because a heading called
           "group" over a single name is worse than no heading. */}
-      <div className="mt-2 border-t border-line pt-3">
+      <div className="mt-5 border-t border-line pt-4">
         <CompanyTree companyId={company.id} index={index} onSelect={onSelect} />
       </div>
     </div>
@@ -302,11 +325,7 @@ export default function CompanyPanel({
             onCancel={() => setIsEditing(false)}
           />
         ) : (
-          <CompanyDetails
-            company={company}
-            index={index}
-            onSelect={onSelect}
-          />
+          <CompanyDetails company={company} index={index} onSelect={onSelect} />
         )}
       </div>
 
