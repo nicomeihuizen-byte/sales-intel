@@ -47,7 +47,7 @@ export default function TerminalShell({
             className={`mx-auto flex ${maxWidthClassName} items-center justify-between px-6 py-4`}
           >
             <a
-              href="https://www.meihuizen.ai/projects/ai-sales-deal-intelligence.html"
+              href="https://www.meihuizen.ai/projects/five-deal-management.html"
               className="font-mono text-sm text-muted transition-colors hover:text-accent"
             >
               &lt; back to case study

@@ -108,7 +108,7 @@ const PANEL_CONFIG: Record<
 > = {
   open: {
     title: "Momentum",
-    buttonLabel: "Analyze",
+    buttonLabel: "Analyze deal",
     placeholder:
       "Click Analyze for a reasoned read on this deal's momentum, plus the next steps it points to.",
   },
