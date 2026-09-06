@@ -84,11 +84,19 @@ export const MOMENTUM_STYLE: Record<DealMomentum, string> = {
  * turn a list into a warning sign. An unanalysed deal gets no edge at all
  * rather than a grey one, because "nobody has looked at this yet" is a
  * different statement from "this is fine".
+ *
+ * 6px, up from the 2px it shipped at. At a hairline the colour was
+ * something you noticed only after reading the row, which is backwards:
+ * the whole point of the bar is to answer "where do I start" from across
+ * the desk, before any words are read. Wider than the 2px accent edge that
+ * marks a prospect on the companies list, deliberately, because these two
+ * marks answer different questions and should not be mistaken for the same
+ * one.
  */
 export const MOMENTUM_EDGE: Record<DealMomentum, string> = {
-  healthy: "border-l-2 border-l-ok",
-  stalling: "border-l-2 border-l-warn",
-  at_risk: "border-l-2 border-l-danger",
+  healthy: "border-l-[6px] border-l-ok",
+  stalling: "border-l-[6px] border-l-warn",
+  at_risk: "border-l-[6px] border-l-danger",
 };
 
 /**
