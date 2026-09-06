@@ -8,7 +8,7 @@ import type { Contact } from "./types";
 // (supabase/migrations) is what scopes it to the caller.
 
 const CONTACT_COLUMNS =
-  "id, company_id, user_id, name, role, emails, phones, socials, created_at, updated_at";
+  "id, company_id, user_id, name, role, location, address, emails, phones, socials, created_at, updated_at";
 
 /**
  * Every contact at one company, oldest first so the order stays stable as
@@ -34,6 +34,8 @@ export async function listContactsForCompany(
 export interface ContactInput {
   name: string;
   role?: string;
+  location?: string;
+  address?: string;
   emails?: string[];
   phones?: string[];
   socials?: string[];
@@ -72,6 +74,8 @@ function normalizeContactInput(input: ContactInput) {
   return {
     name,
     role: blankToNull(input.role),
+    location: blankToNull(input.location),
+    address: blankToNull(input.address),
     emails: cleanList(input.emails),
     phones: cleanList(input.phones),
     // Normalized to full URLs on the way in, so the display side never has
@@ -142,6 +146,59 @@ export async function updateContact(
 }
 
 /**
+ * Moves a contact to another company.
+ *
+ * Its own function rather than a field on the edit form, because moving a
+ * person is a different intent from correcting their phone number. A
+ * company picker sitting in the edit form would relocate someone the first
+ * time a stray keystroke landed on a select, and nothing on screen would
+ * say it had happened until they went missing from the list.
+ *
+ * The target is read back before the write, and that check is the point of
+ * this function. RLS makes another user's company invisible to a select
+ * but not to a foreign key: an id belonging to somebody else would satisfy
+ * the constraint and quietly move this contact out of reach. Same hole,
+ * and same guard, as assertParentIsUsable in lib/companies.ts.
+ */
+export async function moveContact(
+  supabase: SupabaseClient,
+  contactId: string,
+  targetCompanyId: string,
+): Promise<void> {
+  const { data: target, error: targetError } = await supabase
+    .from("companies")
+    .select("id, name")
+    .eq("id", targetCompanyId)
+    .maybeSingle();
+
+  if (targetError) {
+    throw new Error(`Failed to look up that company: ${targetError.message}`);
+  }
+
+  if (!target) {
+    throw new Error("That company is not in your list.");
+  }
+
+  const { data, error } = await supabase
+    .from("contacts")
+    .update({
+      company_id: targetCompanyId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", contactId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to move contact: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("That contact no longer exists.");
+  }
+}
+
+/**
  * Deletes a contact. A delete of a row the caller doesn't own matches no
  * rows under RLS rather than erroring, which is indistinguishable from
  * deleting something already gone - both are reported the same way here on
@@ -151,7 +208,10 @@ export async function deleteContact(
   supabase: SupabaseClient,
   contactId: string,
 ): Promise<void> {
-  const { error } = await supabase.from("contacts").delete().eq("id", contactId);
+  const { error } = await supabase
+    .from("contacts")
+    .delete()
+    .eq("id", contactId);
 
   if (error) {
     throw new Error(`Failed to delete contact: ${error.message}`);

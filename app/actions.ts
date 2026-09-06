@@ -51,6 +51,7 @@ import {
 import {
   createContact,
   deleteContact,
+  moveContact,
   updateContact,
   type ContactInput,
 } from "@/lib/contacts";
@@ -88,6 +89,8 @@ function contactInputFromForm(formData: FormData): ContactInput | null {
   return {
     name,
     role: optional("role"),
+    location: optional("location"),
+    address: optional("address"),
     emails: list("emails"),
     phones: list("phones"),
     socials: list("socials"),
@@ -223,6 +226,56 @@ export async function updateCompanyAction(
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Failed to save company.",
+    };
+  }
+
+  revalidateWorkspace();
+  return { error: null };
+}
+
+/**
+ * Moves a contact to another company.
+ *
+ * A separate action from updateContactAction, sent from its own small
+ * form, because it is a separate intent. Somebody at the holding company
+ * turns out to work for the Vilnius subsidiary, or a person you filed
+ * under the parent belongs one level down: that is a deliberate act, and
+ * it should take a deliberate click rather than riding along on a save of
+ * their phone number.
+ *
+ * Both ids travel in the form body rather than being bound, so the picker
+ * is a plain form and works with JavaScript still loading. lib/contacts.ts
+ * checks the target company reads back for this user before writing: RLS
+ * hides another user's company from a select but not from a foreign key.
+ */
+export async function moveContactAction(
+  _previousState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const contactId = formData.get("contactId");
+  const companyId = formData.get("companyId");
+
+  if (typeof contactId !== "string" || typeof companyId !== "string") {
+    return { error: "Could not work out which contact to move." };
+  }
+
+  if (!companyId) {
+    return { error: "Pick the company to move them to." };
+  }
+
+  const { userId, error: authError } = await requireUserId();
+
+  if (!userId) {
+    return { error: authError };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    await moveContact(supabase, contactId, companyId);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to move contact.",
     };
   }
 

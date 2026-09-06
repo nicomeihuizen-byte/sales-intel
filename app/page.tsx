@@ -193,15 +193,23 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
             deals.map((deal) => deal.id),
           )
         : Promise.resolve(null),
-      countNotesByContact(supabase, contacts.map((contact) => contact.id)),
+      countNotesByContact(
+        supabase,
+        contacts.map((contact) => contact.id),
+      ),
       Promise.all(
-        contacts.map(async (contact) =>
-          [contact.id, await listNotesForContact(supabase, contact.id)] as const,
+        contacts.map(
+          async (contact) =>
+            [
+              contact.id,
+              await listNotesForContact(supabase, contact.id),
+            ] as const,
         ),
       ),
       Promise.all(
-        deals.map(async (deal) =>
-          [deal.id, await listNotesForDeal(supabase, deal.id)] as const,
+        deals.map(
+          async (deal) =>
+            [deal.id, await listNotesForDeal(supabase, deal.id)] as const,
         ),
       ),
     ]);
@@ -221,7 +229,6 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
       .filter((insight) => insight.deal_id in notesByDeal)
       .map((insight) => [insight.deal_id, insight]),
   );
-
 
   return (
     <TerminalShell label="~/desk" maxWidthClassName="max-w-[1800px]">
@@ -276,8 +283,8 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
           open a link from an email, and being told "not here" is a worse
           first impression than being told "this bit needs a screen". */}
       <p className="mt-6 rounded border border-accent-dim bg-raised px-4 py-3 font-mono text-xs leading-relaxed text-muted lg:hidden">
-        Five is built for a desk. On a phone it still reads, but the three
-        panes stack and the analysis is easier on a wider screen.
+        Five is built for a desk. On a phone it still reads, but the three panes
+        stack and the analysis is easier on a wider screen.
       </p>
 
       <PipelineMeters metrics={metrics} />
@@ -298,9 +305,7 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
               whole desk looks slightly wrong in a way that is hard to
               point at. Change this number in all three or none. */}
           <div className="flex h-8 shrink-0 items-center justify-between gap-2">
-            <h2 className="font-mono text-sm text-accent2">
-              {"// prospects"}
-            </h2>
+            <h2 className="font-mono text-sm text-accent2">{"// prospects"}</h2>
             <span className="font-mono text-xs text-dim">
               {prospects.length}/{MAX_PROSPECTS}
             </span>
@@ -398,6 +403,7 @@ export default async function DeskPage({ searchParams }: DeskPageProps) {
                   the question gets asked out loud. */}
               <ContactList
                 companyId={selectedCompany.id}
+                companyIndex={companyIndex}
                 contacts={contacts}
                 deals={deals}
                 defaultDealId={openDeals.length === 1 ? openDeals[0].id : null}

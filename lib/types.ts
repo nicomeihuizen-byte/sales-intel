@@ -135,6 +135,15 @@ export interface Contact {
   user_id: string;
   name: string;
   role: string | null;
+  // Where this person actually sits. A city or an office name, short
+  // enough to read beside the role while deciding who to call. It exists
+  // because a 140-person company across seven cities made "Region
+  // Manager" ambiguous on its own.
+  location: string | null;
+  // A postal address for the person, when it is not the company's. One
+  // free-text block, same reasoning as companies.address: pasted in whole,
+  // never sorted on by parts.
+  address: string | null;
   // Lists rather than single values: people have a work address and a
   // personal one, a mobile and a desk line. Always an array, never null,
   // so callers never have to check both "missing" and "empty".
@@ -192,9 +201,7 @@ export interface DealLossReview {
 // no real stalls), or "recovered_momentum" (a real stall or setback
 // partway through that still closed).
 export type WinPattern =
-  | "fast_and_clean"
-  | "steady_and_thorough"
-  | "recovered_momentum";
+  "fast_and_clean" | "steady_and_thorough" | "recovered_momentum";
 
 export interface DealWinReview {
   pattern: WinPattern;

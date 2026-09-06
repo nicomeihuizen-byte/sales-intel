@@ -5,6 +5,7 @@ import {
   createContactAction,
   createContactNoteAction,
   deleteContactAction,
+  moveContactAction,
   updateContactAction,
   type FormState,
 } from "@/app/actions";
@@ -15,12 +16,18 @@ import NoteBody, { noteLabel } from "@/components/NoteBody";
 import { mailtoHref, profileHref, socialLabel, telHref } from "@/lib/links";
 import { useActionSuccess } from "@/lib/useActionSuccess";
 import type { Contact, Deal, Note } from "@/lib/types";
+import type { CompanyIndexEntry } from "@/lib/companies";
 
 const initialState: FormState = { error: null };
 
 const TEXT_FIELDS = [
   { name: "name", label: "Name", type: "text", required: true },
   { name: "role", label: "Role", type: "text", required: false },
+  // Where they sit. Short on purpose: a city, or an office name. It earns
+  // a field of its own because "Region Manager" at a company with seven
+  // offices is not enough to know who you are calling, and the alternative
+  // was people writing it into the role, where nothing can read it.
+  { name: "location", label: "Location", type: "text", required: false },
 ] as const;
 
 function ContactFields({
@@ -41,6 +48,7 @@ function ContactFields({
   const defaults: Record<string, string> = {
     name: contact?.name ?? "",
     role: contact?.role ?? "",
+    location: contact?.location ?? "",
   };
 
   return (
@@ -60,6 +68,21 @@ function ContactFields({
           />
         </label>
       ))}
+
+      {/* The block, for the person who is not at the company address: a
+          broker in a regional office, a consultant at their own premises.
+          Most contacts leave it empty and that is correct, which is why it
+          sits below the three short fields rather than among them. */}
+      <label className="flex flex-col gap-1 font-mono text-xs text-muted">
+        Address
+        <textarea
+          name="address"
+          rows={2}
+          defaultValue={contact?.address ?? ""}
+          placeholder="Only if it differs from the company"
+          className="rounded border border-line bg-background px-2 py-1.5 font-sans text-sm text-foreground outline-none focus:border-accent"
+        />
+      </label>
 
       <MultiField
         name="emails"
@@ -118,24 +141,39 @@ function ContactFields({
  * JavaScript Security Hardening).
  */
 function ContactDetails({ contact }: { contact: Contact }) {
-  const rows: { label: string; value: string; href: string | null; external?: boolean }[] =
-    [
-      ...contact.emails.map((email) => ({
-        label: "email",
-        value: email,
-        href: mailtoHref(email),
-      })),
-      ...contact.phones.map((phone) => ({
-        label: "phone",
-        value: phone,
-        href: telHref(phone),
-      })),
-    ];
+  const rows: {
+    label: string;
+    value: string;
+    href: string | null;
+    external?: boolean;
+  }[] = [
+    ...contact.emails.map((email) => ({
+      label: "email",
+      value: email,
+      href: mailtoHref(email),
+    })),
+    ...contact.phones.map((phone) => ({
+      label: "phone",
+      value: phone,
+      href: telHref(phone),
+    })),
+  ];
 
   return (
     <>
       <p className="text-sm font-medium text-foreground">{contact.name}</p>
       {contact.role && <p className="text-xs text-muted">{contact.role}</p>}
+      {/* Location beside the role rather than down with the address,
+          because it is read while deciding who to call and the address is
+          read once a year. */}
+      {contact.location && (
+        <p className="font-mono text-xs text-dim">{contact.location}</p>
+      )}
+      {contact.address && (
+        <p className="mt-1 whitespace-pre-wrap text-xs text-muted">
+          {contact.address}
+        </p>
+      )}
 
       {/* Socials sit apart from the addresses and phone numbers, as named
           chips rather than rows.
@@ -184,7 +222,10 @@ function ContactDetails({ contact }: { contact: Contact }) {
       {rows.length > 0 && (
         <dl className="mt-2 flex flex-col gap-0.5">
           {rows.map((row) => (
-            <div key={`${row.label}-${row.value}`} className="flex gap-2 text-xs">
+            <div
+              key={`${row.label}-${row.value}`}
+              className="flex gap-2 text-xs"
+            >
               <dt className="w-10 shrink-0 font-mono text-dim">{row.label}</dt>
               <dd className="min-w-0 break-words">
                 {row.href ? (
@@ -343,14 +384,107 @@ function ContactNotes({
   );
 }
 
+/**
+ * Moves one contact to another company.
+ *
+ * Its own control and its own form, sitting beside edit and remove rather
+ * than inside the edit form. Moving a person is a different act from
+ * correcting their phone number: a company picker among the other fields
+ * would relocate somebody the first time a stray keystroke landed on a
+ * select, and nothing on the screen would say so until they went missing.
+ *
+ * Closed until asked for, because it is the rarest thing you do to a
+ * contact and a permanently visible select would take a line of a pane
+ * that has none to spare.
+ *
+ * The current company is not in the list. "Move to where they already
+ * are" is not an answer, and offering it is how a control invites a click
+ * that does nothing.
+ */
+function MoveContact({
+  contact,
+  companyIndex,
+}: {
+  contact: Contact;
+  companyIndex: CompanyIndexEntry[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [state, formAction, isPending] = useActionState(
+    moveContactAction,
+    initialState,
+  );
+
+  const targets = companyIndex.filter(
+    (entry) => entry.id !== contact.company_id,
+  );
+
+  // Nothing to move them to. One company in the book is the normal state
+  // on day one, and a control that can only fail is worse than no control.
+  if (targets.length === 0) {
+    return null;
+  }
+
+  if (!isOpen) {
+    return (
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className="font-mono text-xs text-dim transition-colors hover:text-accent"
+      >
+        move
+      </button>
+    );
+  }
+
+  return (
+    <form action={formAction} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="contactId" value={contact.id} />
+      <select
+        name="companyId"
+        defaultValue=""
+        className="rounded border border-line bg-background px-1.5 py-0.5 font-mono text-xs text-foreground outline-none focus:border-accent"
+      >
+        <option value="">move to...</option>
+        {targets.map((entry) => (
+          <option key={entry.id} value={entry.id}>
+            {entry.name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="submit"
+        disabled={isPending}
+        className="font-mono text-xs text-accent2 transition-colors hover:text-accent disabled:opacity-50"
+      >
+        {isPending ? "moving..." : "move"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setIsOpen(false)}
+        className="font-mono text-xs text-dim transition-colors hover:text-accent"
+      >
+        cancel
+      </button>
+      {state.error && (
+        <p role="alert" className="w-full text-xs text-danger">
+          {state.error}
+        </p>
+      )}
+    </form>
+  );
+}
+
 function ContactRow({
   contact,
+  companyIndex,
   deals,
   defaultDealId,
   notes,
   noteCount,
 }: {
   contact: Contact;
+  /** Every company, for the move picker on this row. */
+  companyIndex: CompanyIndexEntry[];
   deals: Deal[];
   defaultDealId: string | null;
   notes: Note[];
@@ -410,6 +544,7 @@ function ContactRow({
             >
               edit
             </button>
+            <MoveContact contact={contact} companyIndex={companyIndex} />
             <form action={deleteAction}>
               <input type="hidden" name="contactId" value={contact.id} />
               <button
@@ -422,11 +557,7 @@ function ContactRow({
             </form>
           </div>
 
-          <ContactNotes
-            contact={contact}
-            notes={notes}
-            noteCount={noteCount}
-          />
+          <ContactNotes contact={contact} notes={notes} noteCount={noteCount} />
 
           {isEmailOpen && (
             <EmailPanel
@@ -457,6 +588,7 @@ function ContactRow({
  */
 export default function ContactList({
   companyId,
+  companyIndex,
   contacts,
   deals,
   defaultDealId,
@@ -481,6 +613,12 @@ export default function ContactList({
    */
   defaultDealId: string | null;
   notesByContact: Record<string, Note[]>;
+  /**
+   * Every company the user has, for the move picker on each row. Handed
+   * down from the page rather than fetched here: this is a client
+   * component, and the desk already loads the index for the group tree.
+   */
+  companyIndex: CompanyIndexEntry[];
   noteCountsByContact: Record<string, number>;
   /**
    * Rendered at the far right of the `// contacts` header.
@@ -563,6 +701,7 @@ export default function ContactList({
               deals={deals}
               defaultDealId={defaultDealId}
               notes={notesByContact[contact.id] ?? []}
+              companyIndex={companyIndex}
               noteCount={noteCountsByContact[contact.id] ?? 0}
             />
           ))}
