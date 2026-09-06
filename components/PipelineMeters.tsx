@@ -147,9 +147,14 @@ function StatTile({
  * It was a fixed panel bottom right, which put it over the notes timeline
  * and made it something to dismiss. In the flow at the top it is the first
  * thing read and nothing has to move out of its way, so the collapse
- * control is gone with it. What survives is `refresh`, which is the only
- * control here that does anything: it re-runs the analysis the health
- * score averages.
+ * control is gone with it. What survives is the Analyze pipeline button,
+ * the only control here that does anything: it re-runs the model against
+ * every open deal, which is what the health score averages.
+ *
+ * It is red on purpose. That button is the one place on the desk where a
+ * click spends money, one paid call per open deal up to the cap, and it
+ * used to be a grey word reading "refresh" as though it reloaded a number
+ * already on the screen.
  *
  * Four cells on a wide screen, stacking to two and then one as the width
  * drops, so the figures stay readable rather than shrinking.
@@ -180,13 +185,26 @@ export default function PipelineMeters({
               {state.failed > 0 ? `, ${state.failed} failed` : ""}
             </p>
           )}
+          {/* A red button, not a grey word.
+
+              It said "refresh", which reads as reloading a number that is
+              already sitting there. It is not that. It re-runs the model
+              against every open deal, up to the twelve-deal cap, and each
+              one is a paid call. Automatic analysis already keeps the
+              stale ones current, so pressing this on an ordinary evening
+              usually buys the same verdicts a second time.
+
+              Red because it is the only control on this strip that spends
+              money. Worth knowing that red elsewhere in the app means "this
+              deletes something", so if a destructive control ever lands
+              beside this one, the two need separating again. */}
           <form action={refreshAction}>
             <button
               type="submit"
               disabled={isRefreshing}
-              className="font-mono text-xs text-dim transition-colors hover:text-accent disabled:opacity-50"
+              className="rounded bg-danger px-3 py-1.5 font-mono text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {isRefreshing ? "analysing..." : "refresh"}
+              {isRefreshing ? "analysing..." : "Analyze pipeline"}
             </button>
           </form>
         </div>
